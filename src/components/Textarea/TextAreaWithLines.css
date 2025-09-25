@@ -1,0 +1,57 @@
+.textarea-container {
+  border: 1px solid orange;
+  padding: 10px;
+  border-radius: 5px;
+}
+
+.textarea-line {
+  display: flex;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.line-number {
+  margin-right: 10px;
+}
+
+.line-input {
+  flex: 1;
+  margin-right: 10px;
+  padding: 5px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+}
+
+.delete-button {
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.delete-button:hover {
+  color: #000;
+}
+
+.textarea-line:last-child {
+  margin-bottom: 0;
+}
+
+.delete-all-button {
+  background-color: #ff6666;
+  color: white;
+  border: none;
+  padding: 10px;
+  cursor: pointer;
+  border-radius: 3px;
+  margin-top: 10px;
+}
+
+.delete-all-button:hover {
+  background-color: #ff3333;
+}
+
+.hidden-textarea {
+  display: none;
+}

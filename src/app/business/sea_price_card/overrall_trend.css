@@ -1,0 +1,12 @@
+/* 设置表头样式 */
+.ant-table-thead > tr > th {
+  white-space: normal;
+  word-wrap: break-word;
+  min-width: 150px;
+}
+
+/* 设置表格内容单元格样式 */
+.ant-table-tbody > tr > td {
+  white-space: normal;
+  word-wrap: break-word;
+} 

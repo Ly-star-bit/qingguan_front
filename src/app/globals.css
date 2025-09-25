@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --foreground-rgb: 255, 255, 255;
+    --background-start-rgb: 0, 0, 0;
+    --background-end-rgb: 0, 0, 0;
+  }
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: rgb(var(--background-start-rgb));
+  
+}
+
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* TodoComponent responsive styles */
+@media (max-width: 576px) {
+  .todo-card .ant-card-head-title {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+  
+  .todo-card .ant-card-head-title > div:first-child {
+    flex: 1 1 100% !important;
+    margin-bottom: 8px !important;
+  }
+  
+  .todo-card .ant-card-head-title > div:last-child {
+    flex: 1 1 100% !important;
+    justify-content: flex-end !important;
+  }
+  
+  .todo-card .ant-btn-sm {
+    padding: 4px 8px !important;
+    font-size: 11px !important;
+    min-width: 32px !important;
+  }
+  
+  .todo-card .ant-card-body {
+    padding: 8px !important;
+  }
+  
+  /* 在小屏幕上隐藏配置按钮文字，只显示图标 */
+  .todo-card .ant-btn:not(.ant-btn-primary) span:not(.anticon) {
+    display: none !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .todo-card .ant-btn span {
+    font-size: 10px !important;
+  }
+  
+  .todo-card .ant-typography {
+    font-size: 11px !important;
+  }
+  
+  .todo-card .ant-card-head-title {
+    min-height: auto !important;
+  }
+}
