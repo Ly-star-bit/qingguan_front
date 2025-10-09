@@ -10,6 +10,7 @@ import {
   Tree,
   Empty,
   Tag,
+  Space,
 } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import axiosInstance from '@/utils/axiosInstance';
@@ -49,6 +50,8 @@ const MenuPage = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [apiEndpoints, setApiEndpoints] = useState<ApiEndpoint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedNode, setSelectedNode] = useState<MenuItem | null>(null);
+  const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
 
   const fetchData = async () => {
     try {
@@ -188,56 +191,44 @@ const MenuPage = () => {
   };
 
   const convertMenuToTreeData = (items: MenuItem[]): DataNode[] => {
-    return items.map(item => ({
-      title: (
-        <div className="flex items-center justify-between w-full py-2">
-          <div className="flex items-center">
-            <span className="mr-2">
+    return items.map(item => {
+      // 计算API数量：优先使用 api_endpoints，其次使用 api_endpoint_ids
+      const apiCount = item.api_endpoints?.length || item.api_endpoint_ids?.length || 0;
+      
+      return {
+        title: (
+          <div className="flex items-center gap-2">
+            <span>
               {item.children && item.children.length > 0 ? 
-                <FolderOpenOutlined /> : <FileOutlined />
+                <FolderOutlined style={{ color: '#faad14' }} /> : 
+                <FileOutlined style={{ color: '#1890ff' }} />
               }
             </span>
             <span className="font-medium">{item.name}</span>
             {item.path && (
-              <span className="ml-2 text-gray-500 text-sm">({item.path})</span>
+              <span className="text-gray-400 text-xs">({item.path})</span>
+            )}
+            {apiCount > 0 && (
+              <Tag color="blue" className="ml-1">{apiCount} API</Tag>
             )}
           </div>
-          <div className="flex items-center space-x-2">
-            {item.api_endpoints?.slice(0, 2).map((api, index) => (
-              <Tag 
-                key={index}
-                color={
-                  api.Method === 'GET' ? 'green' :
-                  api.Method === 'POST' ? 'blue' :
-                  api.Method === 'PUT' ? 'orange' :
-                  'red'
-                }
-              >
-                {api.Method}
-              </Tag>
-            ))}
-            {item.api_endpoints && item.api_endpoints.length > 2 && (
-              <Tag>+{item.api_endpoints.length - 2}</Tag>
-            )}
-            <Button 
-              type="text" 
-              icon={<EditOutlined />} 
-              onClick={() => handleEdit(item)}
-              size="small"
-            />
-            <Button 
-              type="text" 
-              icon={<DeleteOutlined />} 
-              onClick={() => handleDelete(item.id)}
-              size="small"
-              danger
-            />
-          </div>
-        </div>
-      ),
-      key: item.id,
-      children: item.children ? convertMenuToTreeData(item.children) : [],
-    }));
+        ),
+        key: item.id,
+        children: item.children ? convertMenuToTreeData(item.children) : [],
+      };
+    });
+  };
+
+  // 查找菜单项
+  const findMenuItem = (items: MenuItem[], id: string): MenuItem | null => {
+    for (const item of items) {
+      if (item.id === id) return item;
+      if (item.children) {
+        const found = findMenuItem(item.children, id);
+        if (found) return found;
+      }
+    }
+    return null;
   };
 
   const groupedApiOptions = apiEndpoints.reduce((acc, endpoint) => {
@@ -248,7 +239,7 @@ const MenuPage = () => {
   }, {} as Record<string, ApiEndpoint[]>);
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
+    <div className="max-w-7xl mx-auto p-6">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">菜单管理</h1>
         <Button 
@@ -260,19 +251,190 @@ const MenuPage = () => {
         </Button>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        {data.length > 0 ? (
-          <Tree
-            treeData={convertMenuToTreeData(data)}
-            defaultExpandAll={false}
-            showLine
-          />
-        ) : (
-          <Empty 
-            description="暂无菜单数据"
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-          />
-        )}
+      <div className="grid grid-cols-12 gap-4">
+        {/* 左侧树形菜单 */}
+        <div className="col-span-5 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <div className="mb-4 flex justify-between items-center">
+            <h2 className="text-lg font-semibold text-gray-700">菜单结构</h2>
+            <Button 
+              type="link" 
+              size="small"
+              onClick={() => {
+                if (expandedKeys.length > 0) {
+                  setExpandedKeys([]);
+                } else {
+                  const allKeys: string[] = [];
+                  const collectKeys = (items: MenuItem[]) => {
+                    items.forEach(item => {
+                      allKeys.push(item.id);
+                      if (item.children) collectKeys(item.children);
+                    });
+                  };
+                  collectKeys(data);
+                  setExpandedKeys(allKeys);
+                }
+              }}
+            >
+              {expandedKeys.length > 0 ? '全部收起' : '全部展开'}
+            </Button>
+          </div>
+          {data.length > 0 ? (
+            <Tree
+              treeData={convertMenuToTreeData(data)}
+              expandedKeys={expandedKeys}
+              onExpand={(keys) => setExpandedKeys(keys as string[])}
+              onSelect={(selectedKeys) => {
+                if (selectedKeys.length > 0) {
+                  const menuItem = findMenuItem(data, selectedKeys[0] as string);
+                  if (menuItem) {
+                    // 根据 api_endpoint_ids 填充完整的 api_endpoints 数据
+                    if (menuItem.api_endpoint_ids && menuItem.api_endpoint_ids.length > 0) {
+                      const fullEndpoints = menuItem.api_endpoint_ids
+                        .map(id => apiEndpoints.find(ep => ep.id === id))
+                        .filter((ep): ep is ApiEndpoint => ep !== undefined);
+                      setSelectedNode({
+                        ...menuItem,
+                        api_endpoints: fullEndpoints
+                      });
+                    } else {
+                      setSelectedNode(menuItem);
+                    }
+                  }
+                } else {
+                  setSelectedNode(null);
+                }
+              }}
+              showLine={{ showLeafIcon: false }}
+              defaultExpandAll={false}
+              style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}
+            />
+          ) : (
+            <Empty 
+              description="暂无菜单数据"
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+            />
+          )}
+        </div>
+
+        {/* 右侧详情面板 */}
+        <div className="col-span-7 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          {selectedNode ? (
+            <div>
+              <div className="flex justify-between items-start mb-6">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                    {selectedNode.children && selectedNode.children.length > 0 ? 
+                      <FolderOutlined style={{ color: '#faad14' }} /> : 
+                      <FileOutlined style={{ color: '#1890ff' }} />
+                    }
+                    {selectedNode.name}
+                  </h2>
+                  {selectedNode.path && (
+                    <p className="text-gray-500 mt-1">路径: {selectedNode.path}</p>
+                  )}
+                </div>
+                <Space>
+                  <Button 
+                    type="primary"
+                    icon={<EditOutlined />} 
+                    onClick={() => handleEdit(selectedNode)}
+                  >
+                    编辑
+                  </Button>
+                  <Button 
+                    danger
+                    icon={<DeleteOutlined />} 
+                    onClick={() => handleDelete(selectedNode.id)}
+                  >
+                    删除
+                  </Button>
+                </Space>
+              </div>
+
+              {/* API端点列表 */}
+              <div>
+                <h3 className="text-base font-semibold text-gray-700 mb-3">
+                  关联的API端点 ({selectedNode.api_endpoints?.length || 0})
+                </h3>
+                {selectedNode.api_endpoints && selectedNode.api_endpoints.length > 0 ? (
+                  <div className="space-y-2">
+                    {selectedNode.api_endpoints.map((api, index) => (
+                      <div 
+                        key={index}
+                        className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200"
+                      >
+                        <Tag 
+                          color={
+                            api.Method === 'GET' ? 'green' :
+                            api.Method === 'POST' ? 'blue' :
+                            api.Method === 'PUT' ? 'orange' :
+                            api.Method === 'DELETE' ? 'red' :
+                            'default'
+                          }
+                          className="font-mono"
+                        >
+                          {api.Method}
+                        </Tag>
+                        <code className="flex-1 text-sm bg-white px-2 py-1 rounded border border-gray-200">
+                          {api.Path}
+                        </code>
+                        {api.Description && (
+                          <span className="text-gray-500 text-sm">{api.Description}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <Empty 
+                    description="该菜单未关联任何API端点"
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  />
+                )}
+              </div>
+
+              {/* 自定义API路径 */}
+              {selectedNode.custom_api_paths && selectedNode.custom_api_paths.length > 0 && (
+                <div className="mt-6">
+                  <h3 className="text-base font-semibold text-gray-700 mb-3">
+                    自定义API路径 ({selectedNode.custom_api_paths.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {selectedNode.custom_api_paths.map((path, index) => (
+                      <div 
+                        key={index}
+                        className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200"
+                      >
+                        <Tag color="purple">自定义</Tag>
+                        <code className="flex-1 text-sm bg-white px-2 py-1 rounded border border-gray-200">
+                          {path}
+                        </code>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 子菜单信息 */}
+              {selectedNode.children && selectedNode.children.length > 0 && (
+                <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <h3 className="text-base font-semibold text-blue-800 mb-2">
+                    子菜单信息
+                  </h3>
+                  <p className="text-blue-700">
+                    该菜单包含 {selectedNode.children.length} 个子菜单项
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <Empty 
+                description="请从左侧选择一个菜单项以查看详情"
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       <Modal

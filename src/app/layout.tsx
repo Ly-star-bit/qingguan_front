@@ -58,6 +58,8 @@ const loadComponent = (path: string) => {
       return React.lazy(() => import('./vba/lax/page'));
     case '/user-management/policy':
         return React.lazy(() => import('./user-management/policy/page'));
+    case '/user-management/roles':
+        return React.lazy(() => import('./user-management/roles/page'));
     case '/user-management/user':
         return React.lazy(() => import('./user-management/user/page'));
     case '/vba/delivery':
@@ -84,8 +86,7 @@ const loadComponent = (path: string) => {
         return React.lazy(() => import('./user-management/api_endpoint/page'));
     case '/user-management/api_keys':
         return React.lazy(() => import('./user-management/api_keys/page'));
-    case '/user-management/roles':
-        return React.lazy(() => import('./user-management/roles/page'));
+
     default:
       return React.lazy(() => import('./page'));
   }
