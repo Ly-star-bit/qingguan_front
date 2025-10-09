@@ -82,7 +82,10 @@ const loadComponent = (path: string) => {
         return React.lazy(() => import('./user-management/menu/page'));
     case '/user-management/api_endpoint':
         return React.lazy(() => import('./user-management/api_endpoint/page'));
-    
+    case '/user-management/api_keys':
+        return React.lazy(() => import('./user-management/api_keys/page'));
+    case '/user-management/roles':
+        return React.lazy(() => import('./user-management/roles/page'));
     default:
       return React.lazy(() => import('./page'));
   }

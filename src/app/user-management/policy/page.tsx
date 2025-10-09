@@ -172,7 +172,7 @@ const PolicyPage = () => {
 
   const fetchApiEndpoints = async () => {
     try {
-      const response = await axiosInstance.get(`${server_url}/api/api_endpoints`);
+      const response = await axiosInstance.get(`${server_url}/api_endpoints`);
       const endpointsData = response.data;
       
       // 将分组数据转换为平面数组

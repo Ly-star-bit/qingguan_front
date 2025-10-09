@@ -21,7 +21,6 @@ interface SearchParams {
   method: string;
   path: string;
   description: string;
-  Type: string;
 }
 
 const methodColors = {
@@ -29,6 +28,7 @@ const methodColors = {
   POST: 'blue',
   PUT: 'orange',
   DELETE: 'red',
+  '*': 'magenta',
 };
 
 const ApiEndpointPage = () => {
@@ -72,7 +72,7 @@ const ApiEndpointPage = () => {
   };
 
   const handleEdit = (record: ApiEndpoint) => {
-    form.setFieldsValue({...record, Type: record.Type || 'ACL'});
+    form.setFieldsValue({...record});
     setEditingId(record.id);
     setIsModalVisible(true);
   };
@@ -100,13 +100,15 @@ const ApiEndpointPage = () => {
   const handleModalOk = async () => {
     try {
       const values = await form.validateFields();
+      // 移除Type字段，因为它已被移除
+      const { Type, ...apiValues } = values;
       if (editingId) {
         // 更新
-        await axiosInstance.put(`/api_endpoints/${editingId}`, values);
+        await axiosInstance.put(`/api_endpoints/${editingId}`, apiValues);
         message.success('更新成功');
       } else {
         // 创建
-        await axiosInstance.post('/api_endpoints', values);
+        await axiosInstance.post('/api_endpoints', apiValues);
         message.success('创建成功');
       }
       setIsModalVisible(false);
@@ -123,8 +125,7 @@ const ApiEndpointPage = () => {
       const matchMethod = !values.method || item.Method === values.method;
       const matchPath = !values.path || item.Path.toLowerCase().includes(values.path.toLowerCase());
       const matchDescription = !values.description || item.Description.toLowerCase().includes(values.description.toLowerCase());
-      const matchType = !values.Type || item.Type === values.Type;
-      return matchApiGroup && matchMethod && matchPath && matchDescription && matchType;
+      return matchApiGroup && matchMethod && matchPath && matchDescription;
     });
     setFilteredData(filtered);
   };
@@ -180,15 +181,7 @@ const ApiEndpointPage = () => {
        width: 200,
       ellipsis: false,
     },
-    {
-      title: '授权类型',
-      dataIndex: 'Type',
-      key: 'Type',
-      render: (Type) => {
-        const color = Type === 'RBAC' ? 'geekblue' : 'purple';
-        return <Tag color={color}>{Type}</Tag>;
-      }
-    },
+    
     {
       title: '操作',
       key: 'action',
@@ -281,6 +274,7 @@ const ApiEndpointPage = () => {
                   <Col span={5}>
                     <Form.Item name="method" label="请求方法">
                       <Select allowClear placeholder="请选择请求方法">
+                        <Select.Option value="*">*</Select.Option>
                         <Select.Option value="GET">GET</Select.Option>
                         <Select.Option value="POST">POST</Select.Option>
                         <Select.Option value="PUT">PUT</Select.Option>
@@ -298,14 +292,7 @@ const ApiEndpointPage = () => {
                       <Input placeholder="请输入描述" allowClear />
                     </Form.Item>
                   </Col>
-                  <Col span={4}>
-                    <Form.Item name="Type" label="授权类型">
-                      <Select allowClear placeholder="请选择授权类型">
-                        <Select.Option value="ACL">ACL</Select.Option>
-                        <Select.Option value="RBAC">RBAC</Select.Option>
-                      </Select>
-                    </Form.Item>
-                  </Col>
+                  
                 </Row>
                 <Row justify="end">
                   <Space>
@@ -353,19 +340,17 @@ const ApiEndpointPage = () => {
             <Form.Item
               name="ApiGroup"
               label="API组"
-              rules={[{ required: true, message: '请输入API组' }]}
+              rules={[{ required: true, message: '请选择API组' }]}
             >
-              <Input placeholder="请输入API组名称" />
-            </Form.Item>
-            <Form.Item
-              name="Type"
-              label="授权类型"
-              initialValue="ACL"
-              rules={[{ required: true, message: '请选择授权类型' }]}
-            >
-              <Select placeholder="请选择授权类型">
-                <Select.Option value="ACL">ACL</Select.Option>
-                <Select.Option value="RBAC">RBAC</Select.Option>
+              <Select
+                showSearch
+                placeholder="请选择或搜索API组"
+                optionFilterProp="label"
+                options={apiGroups.map(group => ({
+                  label: group,
+                  value: group
+                }))}
+              >
               </Select>
             </Form.Item>
             <Form.Item
@@ -374,6 +359,7 @@ const ApiEndpointPage = () => {
               rules={[{ required: true, message: '请选择请求方法' }]}
             >
               <Select placeholder="请选择请求方法">
+                <Select.Option value="*">*</Select.Option>
                 <Select.Option value="GET">GET</Select.Option>
                 <Select.Option value="POST">POST</Select.Option>
                 <Select.Option value="PUT">PUT</Select.Option>
@@ -383,9 +369,19 @@ const ApiEndpointPage = () => {
             <Form.Item
               name="Path"
               label="路径"
-              rules={[{ required: true, message: '请输入路径' }]}
+              rules={[
+                { 
+                  required: true, 
+                  message: '请输入路径' 
+                },
+                { 
+                  pattern: /^\/[a-zA-Z0-9\-_.~()*!@:+,;=%?#&$\[\]\/\*]*$/, 
+                  message: '请输入有效的路径格式，例如: /users 或 /users/*' 
+                }
+              ]}
+              help="支持通配符路径，如: /qingguan/products/* 用于匹配所有产品相关接口"
             >
-              <Input placeholder="请输入API路径，例如: /users" />
+              <Input placeholder="请输入API路径，例如: /users 或 /users/*" />
             </Form.Item>
             <Form.Item
               name="Description"
