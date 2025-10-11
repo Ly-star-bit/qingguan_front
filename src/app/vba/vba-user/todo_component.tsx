@@ -116,10 +116,10 @@ const TodoComponent: React.FC<TodoComponentProps> = ({
       });
     }
     
-    // Build URL with query parameters
+    // Build URL
     let url = `${backendUrl}${apiEndpoint}`;
     
-    // 如果有文件上传，使用 POST 请求
+    // 判断是否需要使用 POST 请求（文件上传）
     if (enableFileUploadOption && uploadFile) {
       // 使用 FormData 处理文件上传
       const formData = new FormData();
@@ -127,31 +127,31 @@ const TodoComponent: React.FC<TodoComponentProps> = ({
         formData.append('file', uploadFile.originFileObj);
       }
       
-      // 添加其他参数
+      // 添加其他参数到 FormData
       Object.entries(mergedParams).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           formData.append(key, String(value));
         }
       });
       
-      // TODO: 实现文件上传的SSE连接
-      // 这里需要后端支持文件上传的SSE端点
-      message.info('文件上传功能需要后端支持，暂时使用普通参数方式');
+      // 使用 POST 请求连接 SSE
+      eventSourceRef.current = new SSEClient(url);
+      eventSourceRef.current.connectWithPost(formData);
+    } else {
+      // 普通 GET 请求方式（带查询参数）
+      if (Object.keys(mergedParams).length > 0) {
+        const queryParams = new URLSearchParams();
+        Object.entries(mergedParams).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            queryParams.append(key, String(value));
+          }
+        });
+        url += `?${queryParams.toString()}`;
+      }
+      
+      eventSourceRef.current = new SSEClient(url);
+      eventSourceRef.current.connect();
     }
-    
-    // 普通参数方式
-    if (Object.keys(mergedParams).length > 0) {
-      const queryParams = new URLSearchParams();
-      Object.entries(mergedParams).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          queryParams.append(key, String(value));
-        }
-      });
-      url += `?${queryParams.toString()}`;
-    }
-    
-    eventSourceRef.current = new SSEClient(url);
-    eventSourceRef.current.connect();
     
     let taskMap: Record<string, number> = {}; // Map task ID to step index
     
@@ -379,18 +379,53 @@ const TodoComponent: React.FC<TodoComponentProps> = ({
     setIsResultModalVisible(true);
   };
 
-  const downloadFile = (step: TaskStep) => {
+  const downloadFile = async (step: TaskStep) => {
     // 单独处理文件下载
-    if (step.fileUrl) {
-      const link = document.createElement('a');
-      link.href = step.fileUrl;
-      link.download = step.fileName || 'download';
-      link.target = '_blank'; // 在新窗口打开，以防直接下载失败时显示错误
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      message.success(`正在下载文件: ${step.fileName}`);
+    console.log(step)
+    if (step.fileUrl && step.fileName) {
+      try {
+        // 提取文件名部分作为相对于 ./file/ 目录的路径
+        // 从 fileUrl 中提取文件名，如果 fileUrl 是完整URL则从路径部分提取
+        let filePath = step.fileUrl; // 默认使用 fileName
+        
+        // 如果 fileUrl 包含完整的路径信息，提取文件名部分
+        // if (step.fileUrl) {
+        //   // 如果是完整URL，则从中提取文件名
+        //   if (step.fileUrl.startsWith('http://') || step.fileUrl.startsWith('https://')) {
+        //     const url = new URL(step.fileUrl);
+        //     filePath = url.pathname.split('/').pop() || step.fileName || 'download';
+        //   } else {
+        //     // 如果是相对路径，提取文件名
+        //     filePath = step.fileUrl.split('/').pop() || step.fileName || 'download';
+        //   }
+        // }
+
+        // 使用 axiosInstance 调用后端下载接口
+        const response = await axiosInstance.get('/fentan/download', {
+          params: {
+            file_path: filePath // 根据后端接口，传入相对于 ./file/ 目录的文件路径
+          },
+          responseType: 'blob' // 指定响应类型为 blob，用于文件下载
+        });
+
+        // 创建 Blob URL 并下载文件
+        const blob = new Blob([response.data]);
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = step.fileName || 'download';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url); // 释放内存
+        
+        message.success(`正在下载文件: ${step.fileName}`);
+      } catch (error) {
+        console.error('下载文件失败:', error);
+        message.error('文件下载失败，请重试');
+      }
+    } else {
+      message.error('文件信息不完整，无法下载');
     }
   };
 
@@ -581,6 +616,26 @@ const TodoComponent: React.FC<TodoComponentProps> = ({
             </div>
           )}
         </div>
+        
+        {/* 显示已完成任务的查看结果按钮 */}
+        {steps.length > 0 && steps.every(s => s.completed) && (
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: '8px' }}>
+            <Button
+              type="link"
+              icon={<EyeOutlined />}
+              onClick={() => setIsTaskModalVisible(true)}
+              style={{ 
+                color: '#1890ff',
+                fontSize: '12px',
+                padding: '2px 8px',
+                borderRadius: '4px',
+                margin: 0
+              }}
+            >
+              查看结果
+            </Button>
+          </div>
+        )}
       </Card>
 
       <Modal
@@ -610,7 +665,10 @@ const TodoComponent: React.FC<TodoComponentProps> = ({
             eventSourceRef.current.disconnect();
           }
           setIsTaskModalVisible(false);
-          setIsExecuting(false);
+          // 注意：这里不设置 setIsExecuting(false)，以便用户在任务完成后仍能看到结果
+          if (isExecuting) {
+            setIsExecuting(false);
+          }
         }}
         footer={[
           <Button key="close" onClick={() => {
@@ -618,7 +676,10 @@ const TodoComponent: React.FC<TodoComponentProps> = ({
               eventSourceRef.current.disconnect();
             }
             setIsTaskModalVisible(false);
-            setIsExecuting(false);
+            // 注意：这里不设置 setIsExecuting(false)，以便用户在任务完成后仍能看到结果
+            if (isExecuting) {
+              setIsExecuting(false);
+            }
           }}>
             关闭
           </Button>,

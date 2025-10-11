@@ -799,114 +799,43 @@ const PolicyPage = () => {
           </Row>
 
           {showAdvancedSearch && (
-            <Card className="mb-4" bodyStyle={{ padding: '16px' }}>
+            <Card className="mb-4" bodyStyle={{ padding: '20px' }}>
               <Form
                 form={searchForm}
-                layout="horizontal"
+                layout="vertical"
                 onFinish={handleSearch}
               >
-                <Row gutter={16}>
-                  <Col span={3}>
+                <Row gutter={[16, 8]}>
+                  <Col span={8}>
                     <Form.Item name="ptype" label="策略类型">
-                      <Select allowClear placeholder="请选择策略类型">
+                      <Select allowClear placeholder="请选择策略类型" size="large">
                         <Select.Option value="p">p策略 (基本策略)</Select.Option>
                         <Select.Option value="g">g策略 (分组策略)</Select.Option>
                         <Select.Option value="g2">g2策略 (分组策略)</Select.Option>
                       </Select>
                     </Form.Item>
                   </Col>
-                  <Col span={4}>
+                  <Col span={8}>
                     <Form.Item name="sub" label="主体/用户">
                       <Select 
                         allowClear 
-                        placeholder="请选择主体/用户"
+                        placeholder="请选择或输入主体/用户"
                         showSearch
+                        size="large"
                         filterOption={(input, option) => {
                           if (!option) return false;
-                          return (option.value?.toString().toLowerCase().includes(input.toLowerCase()) || false);
+                          const label = option.children?.toString().toLowerCase() || '';
+                          const value = option.value?.toString().toLowerCase() || '';
+                          return label.includes(input.toLowerCase()) || value.includes(input.toLowerCase());
                         }}
-                        dropdownRender={(menu) => (
-                          <div>
-                            {menu}
-                            <div style={{ padding: '8px', borderTop: '1px solid #e8e8e8' }}>
-                              <Row justify="space-between" align="middle">
-                                <Col>
-                                  <span className="text-xs text-gray-500">
-                                    共 {userTotal} 个用户
-                                  </span>
-                                </Col>
-                                <Col>
-                                  <Space>
-                                    <Switch
-                                      size="small"
-                                      checked={showAllData}
-                                      onChange={(checked) => {
-                                        setShowAllData(checked);
-                                        if (checked) {
-                                          setUsers(allUsers);
-                                        } else {
-                                          const start = (userPage - 1) * userPageSize;
-                                          const end = start + userPageSize;
-                                          setUsers(allUsers.slice(start, end));
-                                        }
-                                      }}
-                                      checkedChildren="全部"
-                                      unCheckedChildren="分页"
-                                    />
-                                    {!showAllData && (
-                                      <Select
-                                        size="small"
-                                        value={userPageSize}
-                                        onChange={(value) => {
-                                          setUserPageSize(value);
-                                          setUserPage(1);
-                                        }}
-                                      >
-                                        <Select.Option value={10}>10条/页</Select.Option>
-                                        <Select.Option value={20}>20条/页</Select.Option>
-                                        <Select.Option value={50}>50条/页</Select.Option>
-                                      </Select>
-                                    )}
-                                  </Space>
-                                </Col>
-                              </Row>
-                              {!showAllData && (
-                                <Row justify="center" style={{ marginTop: '8px' }}>
-                                  <Space>
-                                    <Button
-                                      size="small"
-                                      disabled={userPage === 1}
-                                      onClick={() => setUserPage(p => Math.max(1, p - 1))}
-                                    >
-                                      上一页
-                                    </Button>
-                                    <span className="text-xs">
-                                      第 {userPage} 页
-                                    </span>
-                                    <Button
-                                      size="small"
-                                      disabled={userPage * userPageSize >= userTotal}
-                                      onClick={() => setUserPage(p => p + 1)}
-                                    >
-                                      下一页
-                                    </Button>
-                                  </Space>
-                                </Row>
-                              )}
-                            </div>
-                          </div>
-                        )}
                       >
                         <Select.OptGroup label="系统用户">
                           {users.map(user => (
                             <Select.Option key={user.id} value={user.username}>
-                              <div className="flex justify-between items-center">
+                              <div className="flex items-center gap-2">
                                 <Tag color={user.status === 1 ? 'green' : 'red'}>
                                   {user.username}
                                 </Tag>
-                                <span className="text-xs text-gray-500">
-                                  {user.last_login ? formatDateTime(user.last_login) : '未登录'}
-                                </span>
                               </div>
                             </Select.Option>
                           ))}
@@ -921,18 +850,27 @@ const PolicyPage = () => {
                       </Select>
                     </Form.Item>
                   </Col>
-                  <Col span={4}>
+                  <Col span={8}>
                     <Form.Item name="obj" label="资源/对象">
                       <Select 
                         allowClear 
-                        placeholder="请选择资源/对象"
+                        placeholder="请选择或输入资源/对象"
                         showSearch
+                        size="large"
                         optionFilterProp="children"
+                        filterOption={(input, option) => {
+                          const label = option?.children?.toString().toLowerCase() || '';
+                          const value = option?.value?.toString().toLowerCase() || '';
+                          return label.includes(input.toLowerCase()) || value.includes(input.toLowerCase());
+                        }}
                       >
                         <Select.OptGroup label="API端点">
                           {apiEndpoints.map(api => (
                             <Select.Option key={api.id} value={api.Path}>
-                              <Tag color="blue">{api.Method}</Tag> {api.Path}
+                              <div className="flex items-center gap-1">
+                                <Tag color="blue">{api.Method}</Tag>
+                                <span className="text-sm">{api.Path}</span>
+                              </div>
                             </Select.Option>
                           ))}
                         </Select.OptGroup>
@@ -953,9 +891,9 @@ const PolicyPage = () => {
                       </Select>
                     </Form.Item>
                   </Col>
-                  <Col span={3}>
+                  <Col span={8}>
                     <Form.Item name="act" label="行为/动作">
-                      <Select allowClear placeholder="请选择行为/动作">
+                      <Select allowClear placeholder="请选择行为/动作" size="large">
                         {['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'].map(method => (
                           <Select.Option key={method} value={method}>
                             <Tag color={
@@ -971,26 +909,30 @@ const PolicyPage = () => {
                       </Select>
                     </Form.Item>
                   </Col>
-                  <Col span={3}>
+                  <Col span={8}>
                     <Form.Item name="eft" label="效果">
-                      <Select allowClear placeholder="请选择效果">
-                        <Select.Option value="allow">允许</Select.Option>
-                        <Select.Option value="deny">拒绝</Select.Option>
+                      <Select allowClear placeholder="请选择效果" size="large">
+                        <Select.Option value="allow">
+                          <Tag color="success" icon={<CheckCircleOutlined />}>允许</Tag>
+                        </Select.Option>
+                        <Select.Option value="deny">
+                          <Tag color="error" icon={<CloseCircleOutlined />}>拒绝</Tag>
+                        </Select.Option>
                       </Select>
                     </Form.Item>
                   </Col>
-                  <Col span={4}>
+                  <Col span={8}>
                     <Form.Item name="description" label="描述">
-                      <Input placeholder="请输入描述关键词" allowClear />
+                      <Input placeholder="请输入描述关键词" allowClear size="large" />
                     </Form.Item>
                   </Col>
-                  <Col span={3}>
-                    <Form.Item label=" ">
-                      <Space>
-                        <Button onClick={resetSearch}>
+                  <Col span={24}>
+                    <Form.Item>
+                      <Space size="middle">
+                        <Button onClick={resetSearch} size="large">
                           重置
                         </Button>
-                        <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>
+                        <Button type="primary" htmlType="submit" icon={<SearchOutlined />} size="large">
                           搜索
                         </Button>
                       </Space>

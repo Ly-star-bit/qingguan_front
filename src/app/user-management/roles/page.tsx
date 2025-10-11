@@ -13,6 +13,7 @@ interface Role {
   id: string;
   role_name: string;
   description?: string;
+  permissions?: string[];
   status: number;
   created_at: string;
   updated_at: string;
@@ -166,7 +167,9 @@ const RoleManagement: React.FC = () => {
 
   // 查看角色权限
   const handleViewRole = async (role: string) => {
-    const policies = await fetchRolePolicies(role) as Policy[];
+    const allPolicies = await fetchRolePolicies(role) as Policy[];
+    // 只显示 eft 为 'allow' 的policy
+    const policies = allPolicies.filter((p: Policy) => p.eft === 'allow');
     setRoleViewName(role);
     setRoleViewPolicies(policies);
     const eps = Array.from(
@@ -185,16 +188,7 @@ const RoleManagement: React.FC = () => {
     setRoleViewVisible(true);
   };
 
-  // 获取角色的菜单权限
-  const fetchRoleMenus = async (roleId: string) => {
-    try {
-      const response = await axiosInstance.get(`${server_url}/roles/${roleId}/menus`);
-      return response.data || [];
-    } catch (error) {
-      console.error('获取角色菜单权限失败:', error);
-      return [];
-    }
-  };
+
 
   // 初始加载时获取所有角色数据
   useEffect(() => {
@@ -223,9 +217,8 @@ const RoleManagement: React.FC = () => {
     setEditingRole(record);
     form.setFieldsValue({ ...record });
     
-    // 加载角色的菜单权限
-    const roleMenus = await fetchRoleMenus(record.id);
-    setSelectedMenuKeys(roleMenus.map((menu: MenuItem) => menu.id));
+    // 直接从 permissions 获取菜单ID
+    setSelectedMenuKeys(record.permissions || []);
     
     setIsModalVisible(true);
   };
@@ -243,101 +236,170 @@ const RoleManagement: React.FC = () => {
     }
   };
 
-  // 从菜单中收集所有 API 端点
-  const collectApiEndpointsFromMenus = (menuKeys: string[]): string[] => {
-    const endpoints: string[] = [];
-    const flatMenus: MenuItem[] = [];
-    
-    // 将树形菜单展平
-    const flattenMenus = (menus: MenuItem[]) => {
-      menus.forEach(menu => {
-        flatMenus.push(menu);
-        if (menu.children && menu.children.length > 0) {
-          flattenMenus(menu.children);
-        }
-      });
-    };
-    
-    flattenMenus(menuItems);
-    
-    // 收集选中菜单的所有 API 端点
-    menuKeys.forEach(menuId => {
-      const menu = flatMenus.find(m => m.id === menuId);
-      if (menu) {
-        // 添加菜单关联的 API 端点
-        if (menu.api_endpoints && menu.api_endpoints.length > 0) {
-          menu.api_endpoints.forEach(endpoint => {
-            endpoints.push(endpoint.Path);
-          });
-        }
-        
-        // 添加自定义 API 路径
-        if (menu.custom_api_paths && menu.custom_api_paths.length > 0) {
-          endpoints.push(...menu.custom_api_paths);
-        }
-      }
-    });
-    
-    return Array.from(new Set(endpoints)); // 去重
-  };
-
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
-      let roleId = editingRole?.id;
+      
+      // 将选中的菜单ID放入permissions字段
+      const payload = {
+        ...values,
+        permissions: selectedMenuKeys
+      };
       
       if (editingRole) {
-        await axiosInstance.put(`${server_url}/roles/${editingRole.id}/`, values);
+        await axiosInstance.put(`${server_url}/roles/${editingRole.id}/`, payload);
         message.success('角色更新成功');
       } else {
-        const response = await axiosInstance.post(`${server_url}/roles/`, values);
-        roleId = response.data.id;
+        await axiosInstance.post(`${server_url}/roles/`, payload);
         message.success('角色创建成功');
       }
       
-      // 保存角色的菜单权限
-      if (roleId && selectedMenuKeys.length > 0) {
+      // 根据选中的菜单获取对应的API端点，为角色创建/更新policy
+      if (values.role_name) {
         try {
-          await axiosInstance.put(`${server_url}/roles/${roleId}/menus`, {
-            menu_ids: selectedMenuKeys
-          });
-        } catch (error) {
-          console.error('保存菜单权限失败:', error);
-          message.warning('角色保存成功，但菜单权限保存失败');
-        }
-      }
-      
-      // 根据选中的菜单创建对应的 policy
-      if (values.role_name && selectedMenuKeys.length > 0) {
-        try {
-          const endpoints = collectApiEndpointsFromMenus(selectedMenuKeys);
+          // 收集所有菜单的api_endpoint_ids的辅助函数
+          const collectApiEndpointIds = (menuKeys: string[]): Set<string> => {
+            const flatMenus: MenuItem[] = [];
+            const flattenMenus = (menus: MenuItem[]) => {
+              menus.forEach(menu => {
+                flatMenus.push(menu);
+                if (menu.children && menu.children.length > 0) {
+                  flattenMenus(menu.children);
+                }
+              });
+            };
+            flattenMenus(menuItems);
+            
+            const ids = new Set<string>();
+            menuKeys.forEach(menuId => {
+              const menu = flatMenus.find(m => m.id === menuId);
+              if (menu && menu.api_endpoint_ids && menu.api_endpoint_ids.length > 0) {
+                menu.api_endpoint_ids.forEach(id => ids.add(id));
+              }
+            });
+            return ids;
+          };
           
-          if (endpoints.length > 0) {
-            const policiesPayload = endpoints.map((endpointPath) => {
-              const apiEndpoint = apiEndpoints.find(api => api.Path === endpointPath);
-              return {
+          // 新选中的菜单对应的端点ID
+          const newApiEndpointIds = collectApiEndpointIds(selectedMenuKeys);
+          const newSelectedEndpoints = apiEndpoints.filter(api => newApiEndpointIds.has(api.id));
+          
+          // 获取已存在的策略（如果是编辑模式）
+          let existingPolicies: Policy[] = [];
+          if (editingRole) {
+            existingPolicies = await fetchRolePolicies(values.role_name) as Policy[];
+          }
+          
+          const existingPolicyMap = new Map(
+            existingPolicies.map(p => [`${p.obj}::${p.act}`, p])
+          );
+          
+          // 收集需要创建的新策略
+          const policiesToCreate: any[] = [];
+          // 收集需要更新的策略（deny -> allow）
+          const policiesToUpdate: any[] = [];
+          
+          for (const endpoint of newSelectedEndpoints) {
+            const key = `${endpoint.Path}::${endpoint.Method}`;
+            const existing = existingPolicyMap.get(key);
+            
+            if (!existing) {
+              // 策略不存在，需要创建
+              policiesToCreate.push({
                 ptype: 'p',
                 sub: values.role_name,
-                obj: endpointPath,
-                act: apiEndpoint?.Method || '*',
+                obj: endpoint.Path,
+                act: endpoint.Method,
                 eft: 'allow',
-                description: apiEndpoint?.Description || `${values.role_name} - ${endpointPath}`
-              };
-            });
-
-            const payload = {
-              user: '',
-              group: values.role_name,
-              description: values.description || '',
-              policies: policiesPayload,
-            };
-
-            await axiosInstance.put(`${server_url}/casbin/policies/groups`, payload);
-            message.success(`已为角色 ${values.role_name} 创建 ${endpoints.length} 个接口权限`);
+                description: endpoint.Description || `${values.role_name} - ${endpoint.Path}`
+              });
+            } else if (existing.eft === 'deny') {
+              // 策略存在但是deny，需要更新为allow
+              policiesToUpdate.push({
+                old_ptype: 'p',
+                old_sub: values.role_name,
+                old_obj: endpoint.Path,
+                old_act: endpoint.Method,
+                old_eft: 'deny',
+                old_description: existing.description || endpoint.Description || `${values.role_name} - ${endpoint.Path}`,
+                new_ptype: 'p',
+                new_sub: values.role_name,
+                new_obj: endpoint.Path,
+                new_act: endpoint.Method,
+                new_eft: 'allow',
+                new_description: endpoint.Description || `${values.role_name} - ${endpoint.Path}`
+              });
+            }
+          }
+          
+          // 处理被取消的菜单：将对应的policy设置为deny
+          if (editingRole && editingRole.permissions) {
+            const oldApiEndpointIds = collectApiEndpointIds(editingRole.permissions);
+            const removedEndpointIds = Array.from(oldApiEndpointIds).filter(id => !newApiEndpointIds.has(id));
+            const removedEndpoints = apiEndpoints.filter(api => removedEndpointIds.includes(api.id));
+            
+            for (const endpoint of removedEndpoints) {
+              const key = `${endpoint.Path}::${endpoint.Method}`;
+              const existing = existingPolicyMap.get(key);
+              
+              if (existing && existing.eft === 'allow') {
+                // 策略存在且是allow，需要更新为deny
+                policiesToUpdate.push({
+                  old_ptype: 'p',
+                  old_sub: values.role_name,
+                  old_obj: endpoint.Path,
+                  old_act: endpoint.Method,
+                  old_eft: 'allow',
+                  old_description: existing.description || endpoint.Description || `${values.role_name} - ${endpoint.Path}`,
+                  new_ptype: 'p',
+                  new_sub: values.role_name,
+                  new_obj: endpoint.Path,
+                  new_act: endpoint.Method,
+                  new_eft: 'deny',
+                  new_description: endpoint.Description || `${values.role_name} - ${endpoint.Path}`
+                });
+              }
+            }
+          }
+          
+          // 批量创建新策略
+          let createCount = 0;
+          if (policiesToCreate.length > 0) {
+            for (const policy of policiesToCreate) {
+              try {
+                await axiosInstance.post(`${server_url}/casbin/policies`, policy);
+                createCount++;
+              } catch (error) {
+                console.warn('创建策略失败:', policy.obj);
+              }
+            }
+          }
+          
+          // 批量更新策略
+          let updateCount = 0;
+          if (policiesToUpdate.length > 0) {
+            try {
+              await axiosInstance.put(`${server_url}/casbin/policies`, policiesToUpdate);
+              updateCount = policiesToUpdate.length;
+            } catch (error) {
+              console.error('批量更新策略失败:', error);
+            }
+          }
+          
+          // 显示结果消息
+          const messages: string[] = [];
+          if (createCount > 0) {
+            messages.push(`创建 ${createCount} 个新权限`);
+          }
+          if (updateCount > 0) {
+            messages.push(`更新 ${updateCount} 个权限`);
+          }
+          if (messages.length > 0) {
+            message.success(`已为角色 ${values.role_name} ${messages.join('，')}`);
           }
         } catch (error) {
-          console.error('创建策略失败:', error);
-          message.warning('角色保存成功，但接口权限创建失败');
+          console.error('处理接口权限失败:', error);
+          message.warning('角色保存成功，但接口权限处理失败');
         }
       }
       
@@ -388,7 +450,8 @@ const RoleManagement: React.FC = () => {
       };
       await axiosInstance.put(`${server_url}/casbin/policies/groups`, payload);
       message.success('角色接口权限更新成功');
-      const refreshed = await fetchRolePolicies(roleViewName);
+      const allRefreshed = await fetchRolePolicies(roleViewName);
+      const refreshed = allRefreshed.filter((p: Policy) => p.eft === 'allow');
       setRoleViewPolicies(refreshed);
       setRoleEndpoints(Array.from(new Set(refreshed.map((p: Policy) => p.obj).filter(Boolean))));
       fetchRoles();
@@ -425,7 +488,8 @@ const RoleManagement: React.FC = () => {
       await axiosInstance.put(`${server_url}/casbin/policies/groups`, payload);
       message.success('角色接口权限更新成功');
       // 刷新展示数据
-      const refreshed = await fetchRolePolicies(roleViewName);
+      const allRefreshed = await fetchRolePolicies(roleViewName);
+      const refreshed = allRefreshed.filter((p: Policy) => p.eft === 'allow');
       setRoleViewPolicies(refreshed);
       fetchRoles();
       setRoleViewVisible(false);
@@ -726,7 +790,8 @@ const RoleManagement: React.FC = () => {
                         const failCount = results.length - successCount;
                         if (successCount > 0) message.success(`成功删除 ${successCount} 条接口权限`);
                         if (failCount > 0) message.warning(`${failCount} 条删除失败，请重试`);
-                        const refreshed = await fetchRolePolicies(roleViewName);
+                        const allRefreshed = await fetchRolePolicies(roleViewName);
+                        const refreshed = allRefreshed.filter((p: Policy) => p.eft === 'allow');
                         setRoleViewPolicies(refreshed);
                         setRoleEndpoints(Array.from(new Set(refreshed.map((p: Policy) => p.obj).filter(Boolean))));
                         fetchRoles();

@@ -38,6 +38,14 @@ export class SSEClient {
   }
 
   public connect(): void {
+    this.connectWithOptions('GET', null);
+  }
+
+  public connectWithPost(body: FormData | Record<string, any>): void {
+    this.connectWithOptions('POST', body);
+  }
+
+  private connectWithOptions(method: 'GET' | 'POST', body: FormData | Record<string, any> | null): void {
     // Clear any existing reconnect timeout
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
@@ -63,10 +71,26 @@ export class SSEClient {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
-    fetch(this.url, {
-      method: 'GET',
+    // Don't set Content-Type for FormData - browser will set it automatically with boundary
+    if (body && !(body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    const fetchOptions: RequestInit = {
+      method: method,
       headers: headers
-    })
+    };
+
+    // Add body for POST requests
+    if (method === 'POST' && body) {
+      if (body instanceof FormData) {
+        fetchOptions.body = body;
+      } else {
+        fetchOptions.body = JSON.stringify(body);
+      }
+    }
+
+    fetch(this.url, fetchOptions)
     .then(response => {
       // Check if response is OK and has a body
       if (response.status === 200 && response.body) {

@@ -125,7 +125,7 @@ const Vba: React.FC = () => {
                     <ExecuteAirTidan></ExecuteAirTidan>
                 </TabPane>
                 )}
-                {/* <TabPane tab="todo卡片测试" key="todo_card_task">
+                <TabPane tab="todo卡片测试" key="todo_card_task">
                   <div style={{ padding: '16px' }}>
                     <Row gutter={[16, 16]}>
                       <Col xs={24} sm={24} md={12} lg={8} xl={6}>
@@ -181,9 +181,19 @@ const Vba: React.FC = () => {
                           enableApiParams={true}
                         />
                       </Col>
+                      <Col xs={24} sm={24} md={12} lg={8} xl={6}>
+                        <TodoComponent
+                          apiEndpoint='/fentan/execute'
+                          title="分摊任务处理"
+                           apiParams={{ task_type: '上海平政' }}                          
+                           enableFileUpload={true}
+                          enableApiParams={true}
+                          downloadBaseUrl='/fentan/'
+                        />
+                      </Col>
                     </Row>
                   </div>
-                </TabPane> */}
+                </TabPane>
                 
                 <TabPane tab="执行空运new" key="execute_air_new">
                 <ExecuteAirNew />
