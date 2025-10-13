@@ -66,6 +66,7 @@ interface OptimizationResult {
         tax_per_weight_cny: number;
         value_ratio_ok: boolean;
         tax_ratio_ok: boolean;
+        MPF: number;
     };
 }
 
@@ -809,11 +810,15 @@ const ExecuteAirNew: React.FC = () => {
         const all_goods_price = items.reduce((acc, item) => acc + ((item as SelectedItem & { goods_price: number | null }).goods_price || 0), 0);
 
         const result = all_goods_price * 0.003464;
-        const min_total = result < 32.71 ? 32.71 : (result > 634.62 ? 634.62 : result);
-
+        // const min_total = result < 33.58 ? 33.58 : (result > 634.62 ? 634.62 : result);
+        var minTotal  = 0
+        minTotal = result < 33.58 ? 33.58 : (result > 651.50 ? 651.50 : result);
+        // minTotal转换为CNY
+        minTotal = minTotal *formValues.exchange_rate
+        console.log("minTotal",minTotal)
         setTotalYuguTax(total);
         setTotalCarrierPrice(all_goods_price);
-        setTotalAllYuguTax(total + min_total);
+        setTotalAllYuguTax(total + minTotal);
         single_weight_calculate(Number(formValues.weight), items);
 
         if (formValues.rate_cn_us) {
@@ -970,14 +975,14 @@ const ExecuteAirNew: React.FC = () => {
         }).filter(Boolean) as SelectedItem[];
         
         // 更新总价值和税金
-        const total = newSelectedItems.reduce((acc, item) => {
-            return acc + (item.yugu_tax_money_usd || 0);
-        }, 0);
-        
+        // const total = newSelectedItems.reduce((acc, item) => {
+        //     return acc + (item.yugu_tax_money_usd || 0);
+        // }, 0);
+        const total = optimizationResult.summary.total_tax_cny/optimizationResult.parameters.exchange_rate
         const allGoodsPrice = optimizationResult.summary.total_value_usd;
-        const result = allGoodsPrice * 0.003464;
-        const minTotal = result < 32.71 ? 32.71 : (result > 634.62 ? 634.62 : result);
-        
+        // 使用后端返回的 MPF 值（美元），转换为 CNY
+        const mpfCNY = optimizationResult.summary.MPF * optimizationResult.parameters.exchange_rate;
+        console.log("MPF (USD):", optimizationResult.summary.MPF, "MPF (CNY):", mpfCNY)
         // 临时设置数据以用于PDF生成
         const tempFormValues = {
             ...executeForm.getFieldsValue(),
@@ -993,7 +998,7 @@ const ExecuteAirNew: React.FC = () => {
             // 直接调用生成PDF，传入优化后的数据
             await handleDownloadExcel(tempFormValues, newSelectedItems, {
                 totalYuguTax: total,
-                totalAllYuguTax: total + minTotal,
+                totalAllYuguTax: total + optimizationResult.summary.MPF,
                 totalCarrierPrice: allGoodsPrice
             });
             
@@ -1894,9 +1899,13 @@ const ExecuteAirNew: React.FC = () => {
                                             color: '#fa8c16',
                                             marginBottom: 4
                                         }}>
-                                            {optimizationResult.summary.total_tax_cny.toFixed(2)}
+                                            {(() => {
+                                                const mpfCNY = optimizationResult.summary.MPF * optimizationResult.parameters.exchange_rate;
+                                                const totalTaxWithMPF = optimizationResult.summary.total_tax_cny + mpfCNY;
+                                                return `${(totalTaxWithMPF / optimizationResult.parameters.exchange_rate).toFixed(2)} / ${totalTaxWithMPF.toFixed(2)}`;
+                                            })()}
                                         </div>
-                                        <div style={{ color: '#666', fontSize: 13, marginBottom: 8 }}>总税金 (CNY)</div>
+                                        <div style={{ color: '#666', fontSize: 13, marginBottom: 8 }}>总税金 (USD / CNY)</div>
                                         
                                         <div style={{ 
                                             fontSize: 24, 
@@ -1927,7 +1936,12 @@ const ExecuteAirNew: React.FC = () => {
                                             color: '#eb2f96',
                                             marginBottom: 4
                                         }}>
-                                            {optimizationResult.summary.tax_per_weight_cny.toFixed(3)}
+                                            {(() => {
+                                                const mpfCNY = optimizationResult.summary.MPF * optimizationResult.parameters.exchange_rate;
+                                                const totalTaxWithMPF = optimizationResult.summary.total_tax_cny + mpfCNY;
+                                                const taxPerWeight = totalTaxWithMPF / optimizationResult.summary.total_weight;
+                                                return taxPerWeight.toFixed(3);
+                                            })()}
                                         </div>
                                         <div style={{ color: '#666', fontSize: 13 }}>税金/重量比率 (CNY/kg)</div>
                                     </div>
@@ -1962,28 +1976,37 @@ const ExecuteAirNew: React.FC = () => {
                                     </div>
                                 </Col>
                                 <Col span={12}>
-                                    <div style={{ 
-                                        padding: 12, 
-                                        backgroundColor: optimizationResult.summary.tax_ratio_ok ? '#f6ffed' : '#fff2e8',
-                                        borderRadius: 6,
-                                        border: `1px solid ${optimizationResult.summary.tax_ratio_ok ? '#b7eb8f' : '#ffbb96'}`,
-                                        textAlign: 'center'
-                                    }}>
-                                        <div style={{ 
-                                            fontSize: 16, 
-                                            fontWeight: 'bold',
-                                            color: optimizationResult.summary.tax_ratio_ok ? '#52c41a' : '#fa541c',
-                                            marginBottom: 4
-                                        }}>
-                                            {optimizationResult.summary.tax_ratio_ok ? '✅' : '❌'} 税金比率检查
-                                        </div>
-                                        <div style={{ 
-                                            color: optimizationResult.summary.tax_ratio_ok ? '#389e0d' : '#d4380d',
-                                            fontSize: 14
-                                        }}>
-                                            {optimizationResult.summary.tax_ratio_ok ? '通过' : '未通过'}
-                                        </div>
-                                    </div>
+                                    {(() => {
+                                        const mpfCNY = optimizationResult.summary.MPF * optimizationResult.parameters.exchange_rate;
+                                        const totalTaxWithMPF = optimizationResult.summary.total_tax_cny + mpfCNY;
+                                        const taxPerWeight = totalTaxWithMPF / optimizationResult.summary.total_weight;
+                                        const taxRatioOk = taxPerWeight <= optimizationResult.parameters.beta_cny;
+                                        
+                                        return (
+                                            <div style={{ 
+                                                padding: 12, 
+                                                backgroundColor: taxRatioOk ? '#f6ffed' : '#fff2e8',
+                                                borderRadius: 6,
+                                                border: `1px solid ${taxRatioOk ? '#b7eb8f' : '#ffbb96'}`,
+                                                textAlign: 'center'
+                                            }}>
+                                                <div style={{ 
+                                                    fontSize: 16, 
+                                                    fontWeight: 'bold',
+                                                    color: taxRatioOk ? '#52c41a' : '#fa541c',
+                                                    marginBottom: 4
+                                                }}>
+                                                    {taxRatioOk ? '✅' : '❌'} 税金比率检查
+                                                </div>
+                                                <div style={{ 
+                                                    color: taxRatioOk ? '#389e0d' : '#d4380d',
+                                                    fontSize: 14
+                                                }}>
+                                                    {taxRatioOk ? '通过' : '未通过'}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
                                 </Col>
                             </Row>
                         </Card>
@@ -2235,9 +2258,9 @@ const ExecuteAirNew: React.FC = () => {
                                         <Col span={6}>
                                             <div style={{ textAlign: 'center' }}>
                                                 <div style={{ fontSize: 20, fontWeight: 'bold', color: '#fa8c16' }}>
-                                                    {item.summary.total_tax_cny.toFixed(2)}
+                                                    {(item.summary.total_tax_cny / item.parameters.exchange_rate).toFixed(2)} / {item.summary.total_tax_cny.toFixed(2)}
                                                 </div>
-                                                <div style={{ color: '#666', fontSize: 12 }}>总税金 (CNY)</div>
+                                                <div style={{ color: '#666', fontSize: 12 }}>总税金 (USD / CNY)</div>
                                             </div>
                                         </Col>
                                         <Col span={6}>

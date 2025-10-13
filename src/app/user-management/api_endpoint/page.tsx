@@ -14,6 +14,16 @@ interface ApiEndpoint {
   Path: string;
   Description: string;
   Type?: 'ACL' | 'RBAC';
+  PermissionCode?: string; // 🔑 关联 PermissionItem.code，如 "product:read"
+}
+
+interface PermissionItem {
+  id: string;
+  code: string;
+  name: string;
+  resource: string;
+  action: string;
+  description?: string;
 }
 
 interface SearchParams {
@@ -41,6 +51,7 @@ const ApiEndpointPage = () => {
   const [searchForm] = Form.useForm();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
+  const [permissionItems, setPermissionItems] = useState<PermissionItem[]>([]);
 
   const fetchData = async () => {
     try {
@@ -61,8 +72,18 @@ const ApiEndpointPage = () => {
     }
   };
 
+  const fetchPermissionItems = async () => {
+    try {
+      const response = await axiosInstance.get('/permission_item');
+      setPermissionItems(response.data);
+    } catch (error) {
+      message.error('获取权限项失败');
+    }
+  };
+
   useEffect(() => {
     fetchData();
+    fetchPermissionItems();
   }, []);
 
   const handleAdd = () => {
@@ -178,10 +199,22 @@ const ApiEndpointPage = () => {
       title: '描述',
       dataIndex: 'Description',
       key: 'Description',
-       width: 200,
+      width: 200,
       ellipsis: false,
     },
-    
+    {
+      title: '权限代码',
+      dataIndex: 'PermissionCode',
+      key: 'PermissionCode',
+      width: 180,
+      render: (code) => code ? (
+        <code className="bg-green-50 px-2 py-1 rounded text-green-700 font-mono text-xs">
+          {code}
+        </code>
+      ) : (
+        <Tag color="default">未关联</Tag>
+      ),
+    },
     {
       title: '操作',
       key: 'action',
@@ -391,6 +424,22 @@ const ApiEndpointPage = () => {
               <Input.TextArea 
                 placeholder="请输入API端点的详细描述"
                 rows={4}
+              />
+            </Form.Item>
+            <Form.Item
+              name="PermissionCode"
+              label="关联权限代码（可选）"
+              rules={[
+                { 
+                  pattern: /^[a-z_]+:[a-z_]+$/, 
+                  message: '格式应为: resource:action (如 product:read)' 
+                }
+              ]}
+              extra="格式：resource:action，例如 product:read, user:delete"
+            >
+              <Input 
+                placeholder="product:read" 
+                allowClear
               />
             </Form.Item>
           </Form>
