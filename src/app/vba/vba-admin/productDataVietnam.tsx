@@ -54,8 +54,8 @@ const ProductDataVietnam: React.FC<ProductTableProps> = ({ transport_type = "空
             setLoadingProducts(true);
 
             const apiEndpoint = transport_type.includes("空运") 
-                ? `${server_url}/qingguan/products/?get_all=true&username=${userName}&country=Vietnam`
-                : `${server_url}/qingguan/products_sea/?get_all=true&username=${userName}&country=Vietnam`;
+                ? `${server_url}/qingguan/products/?get_all=true&username=${userName}&startland=Vietnam&destination=America`
+                : `${server_url}/qingguan/products_sea/?get_all=true&username=${userName}&startland=Vietnam&destination=America`;
                 
             const response = await axiosInstance.get(apiEndpoint);
             const data = await response.data;

@@ -62,8 +62,8 @@ const ProductTable: React.FC<ProductTableProps> = ({ transport_type = "空运" }
             setLoadingProducts(true);
 
             const apiEndpoint = transport_type.includes("空运") 
-                ? `${server_url}/qingguan/products/?get_all=true&username=${userName}`
-                : `${server_url}/qingguan/products_sea/?get_all=true&username=${userName}`;
+                ? `${server_url}/qingguan/products/?get_all=true&username=${userName}&startland=China&destination=America`
+                : `${server_url}/qingguan/products_sea/?get_all=true&username=${userName}&startland=China&destination=America`;
                 
             const response = await axiosInstance.get(apiEndpoint);
             const data = await response.data;
@@ -159,8 +159,8 @@ const ProductTable: React.FC<ProductTableProps> = ({ transport_type = "空运" }
     const fetchProducts = async (append = false) => {
         setLoadingProducts(true);
         const apiEndpoint = transport_type.includes("空运")
-            ? `${server_url}/qingguan/products?skip=${(productPage - 1) * productPageSize}&limit=${productPageSize}&名称=${productFilter}&username=${userName}`
-            : `${server_url}/qingguan/products_sea?skip=${(productPage - 1) * productPageSize}&limit=${productPageSize}&名称=${productFilter}&username=${userName}`;
+            ? `${server_url}/qingguan/products?skip=${(productPage - 1) * productPageSize}&limit=${productPageSize}&名称=${productFilter}&username=${userName}&startland=China&destination=America`
+            : `${server_url}/qingguan/products_sea?skip=${(productPage - 1) * productPageSize}&limit=${productPageSize}&名称=${productFilter}&username=${userName}&startland=China&destination=America`;
             
         const response = await axiosInstance.get(apiEndpoint);
         setTotalProducts(response.data.total);

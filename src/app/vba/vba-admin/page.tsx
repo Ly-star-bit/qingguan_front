@@ -27,6 +27,7 @@ import ProductTableAustralia from './productDataAustralia';
 import axiosInstance from '@/utils/axiosInstance';
 import ProductDataVietnam from './productDataVietnam';
 import PackingTypeTable from './PackingTypeTable';
+import AllProductTable from './AllProductTable';
 const { TabPane } = Tabs;
 const { confirm } = Modal;
 
@@ -36,7 +37,7 @@ const Vba: React.FC = () => {
 
     // --- 状态重构 ---
     // 1. 主选项卡状态
-    const [activeTab, setActiveTab] = useState('airProducts');
+    const [activeTab, setActiveTab] = useState('AllProduct');
 
     // 2. 每个下拉菜单内部的子选项状态
     const [activeAirProduct, setActiveAirProduct] = useState('productData');
@@ -62,11 +63,7 @@ const Vba: React.FC = () => {
         { key: 'productDataSeaVietnam', label: '越南出口美国-海运' },
     ];
 
-    const productSearchItems = [
-        { key: 'productSearch', label: '产品查询America' },
-        { key: 'productSearchSea', label: '产品查询America海运' },
-        { key: 'productSearchCanada', label: '产品查询Canada' },
-    ];
+
 
     // --- 数据获取和处理函数 (保持不变) ---
     const fetchSystemForbiddenStatus = async () => {
@@ -140,7 +137,7 @@ const Vba: React.FC = () => {
             <div style={{ width: '100%' }}>
                 {/* 使用 activeKey 控制主选项卡 */}
                 <Tabs className={styles.tabs} activeKey={activeTab} onChange={(key) => setActiveTab(key)} destroyInactiveTabPane>
-                    <TabPane
+                    {/* <TabPane
                         tab={
                             <Dropdown
                                 menu={{
@@ -151,18 +148,19 @@ const Vba: React.FC = () => {
                                 }}
                                 trigger={['hover', 'click']}
                             >
-                                {/* 标签文本根据子状态动态变化 */}
                                 <span>{productAirItems.find(item => item.key === activeAirProduct)?.label || '空运_产品数据源库'} <DownOutlined /></span>
                             </Dropdown>
                         }
                         // 为主TabPane使用一个独立的、描述性的key
                         key="airProducts"
                     >
-                        {/* 调用辅助函数渲染内容 */}
                         {renderAirProductComponent()}
-                    </TabPane>
+                    </TabPane> */}
                     
-                    <TabPane
+                     <TabPane tab="全部产品" key="AllProduct">
+                        <AllProductTable></AllProductTable>
+                    </TabPane>
+                    {/* <TabPane
                         tab={
                             <Dropdown
                                 menu={{
@@ -179,26 +177,9 @@ const Vba: React.FC = () => {
                         key="seaProducts"
                     >
                         {renderSeaProductComponent()}
-                    </TabPane>
+                    </TabPane> */}
 
-                    <TabPane
-                        tab={
-                            <Dropdown
-                                menu={{
-                                    items: productSearchItems,
-                                    onClick: (e) => setActiveSearch(e.key),
-                                    selectedKeys: [activeSearch],
-                                }}
-                                trigger={['hover', 'click']}
-                            >
-                                <span>{productSearchItems.find(item => item.key === activeSearch)?.label || 'All产品查询'} <DownOutlined /></span>
-                            </Dropdown>
-                        }
-                        // 独立的key
-                        key="searchGroup"
-                    >
-                        {renderSearchComponent()}
-                    </TabPane>
+                  
 
                     {/* 其他没有下拉菜单的 TabPane 保持不变 */}
                     <TabPane tab="收发货人" key="ConsigneeData">

@@ -20,7 +20,7 @@ import PdfViewDownloadUserAir from './pdf_shenhe_air';
 import PdfViewDownloadUserSea from './pdf_shenhe_sea';
 import ProductSearchVietnam from '@/components/ProductSearchVietnam';
 import DocumentViewer from '@/components/office/DocumentViewer';
-import {preview} from '@ranui/preview'
+import { preview } from '@ranui/preview'
 import ExecuteAirTidan from './execute_air_tidan';
 import TodoComponent from './todo_component';
 import ExecuteAirNew from './execute_air_new';
@@ -78,7 +78,7 @@ const Vba: React.FC = () => {
                         tab={
                             <Dropdown
                                 menu={{
-                                    items: menu_items.map(({key, label}) => ({key, label})),
+                                    items: menu_items.map(({ key, label }) => ({ key, label })),
                                     onClick: (e) => setActiveSearchTab(e.key),
                                     selectedKeys: [activeSearchTab],
                                 }}
@@ -91,7 +91,7 @@ const Vba: React.FC = () => {
                     >
                         {activeSearchTab === 'productSearch' && (userMenuIds.includes('*') || userMenuIds.includes('67f4fb3593ffc42375234412')) && <ProductSearch data={[]} transport_type="空运" />}
                         {activeSearchTab === 'productSearchSea' && (userMenuIds.includes('*') || userMenuIds.includes('67f4fb4493ffc42375234413')) && <ProductSearch data={[]} transport_type="海运" />}
-                        {activeSearchTab === 'productSearchCanada' && (userMenuIds.includes('*') || userMenuIds.includes('67f4fb5293ffc42375234414')) && <ProductSearchCanada data={[]} />}    
+                        {activeSearchTab === 'productSearchCanada' && (userMenuIds.includes('*') || userMenuIds.includes('67f4fb5293ffc42375234414')) && <ProductSearchCanada data={[]} />}
                         {activeSearchTab === 'productSearchSeaVietnam' && (userMenuIds.includes('*') || userMenuIds.includes('6837c78a93bfa2999c3c5db6')) && <ProductSearchVietnam data={[]} transport_type="海运" />}
                     </TabPane>
                 )}
@@ -121,82 +121,40 @@ const Vba: React.FC = () => {
                     </TabPane>
                 )}
                 {(userMenuIds.includes('*') || userMenuIds.includes('68a2f3997139a7a29cd7f126')) && (
-                <TabPane tab="分舱单制作" key="airtian">
-                    <ExecuteAirTidan></ExecuteAirTidan>
-                </TabPane>
+                    <TabPane tab="分舱单制作" key="airtian">
+                        <ExecuteAirTidan></ExecuteAirTidan>
+                    </TabPane>
                 )}
-                <TabPane tab="todo卡片测试" key="todo_card_task">
-                  <div style={{ padding: '16px' }}>
-                    <Row gutter={[16, 16]}>
-                      <Col xs={24} sm={24} md={12} lg={8} xl={6}>
-                        <TodoComponent
-                          apiEndpoint='/skudetail/execute'
-                          title="SKU详情任务"
-                          apiParams={{ type: 'sku' }}
-                          enableFileUpload={true}
-                          enableApiParams={true}
-                        />
-                      </Col>
-                      <Col xs={24} sm={24} md={12} lg={8} xl={6}>
-                        <TodoComponent
-                          apiEndpoint='/skudetail/execute'
-                          title="清关任务"
-                          apiParams={{ type: 'customs', region: 'us' }}
-                          enableFileUpload={false}
-                          enableApiParams={true}
-                        />
-                      </Col>
-                      <Col xs={24} sm={24} md={12} lg={8} xl={6}>
-                        <TodoComponent
-                          apiEndpoint='/skudetail/execute'
-                          title="物流任务"
-                          apiParams={{ type: 'shipping', method: 'air' }}
-                          enableFileUpload={true}
-                          enableApiParams={false}
-                        />
-                      </Col>
-                      <Col xs={24} sm={24} md={12} lg={8} xl={6}>
-                        <TodoComponent
-                          apiEndpoint='/skudetail/execute'
-                          title="报表任务"
-                          apiParams={{ type: 'report', format: 'pdf' }}
-                          enableFileUpload={false}
-                          enableApiParams={false}
-                        />
-                      </Col>
-                      <Col xs={24} sm={24} md={12} lg={8} xl={6}>
-                        <TodoComponent
-                          apiEndpoint='/skudetail/execute'
-                          title="数据处理任务"
-                          enableFileUpload={true}
-                          enableApiParams={true}
-                        />
-                      </Col>
-                      <Col xs={24} sm={24} md={12} lg={8} xl={6}>
-                        <TodoComponent
-                          apiEndpoint='/skudetail/execute'
-                          title="数据导出任务"
-                          apiParams={{ format: 'excel', compress: true }}
-                          enableFileUpload={false}
-                          enableApiParams={true}
-                        />
-                      </Col>
-                      <Col xs={24} sm={24} md={12} lg={8} xl={6}>
-                        <TodoComponent
-                          apiEndpoint='/fentan/execute'
-                          title="分摊任务处理"
-                           apiParams={{ task_type: '上海平政' }}                          
-                           enableFileUpload={true}
-                          enableApiParams={true}
-                          downloadBaseUrl='/fentan/'
-                        />
-                      </Col>
-                    </Row>
-                  </div>
+                <TabPane tab="todo卡片" key="todo_card_task">
+                    <div style={{ padding: '16px' }}>
+                        <Row gutter={[16, 16]}>
+                            <Col xs={24} sm={24} md={12} lg={8} xl={6}>
+                                <TodoComponent
+                                    apiEndpoint="/fentan/execute"
+                                    title="分摊任务处理"
+                                    apiParams={{
+                                        task_type: {
+                                            type: 'select',
+                                            label: '任务类型',
+                                            options: [
+                                                { label: '上海平政', value: '上海平政' },
+                                                { label: 'close分摊', value: 'close分摊' },
+                                                { label: '广州航捷', value: '广州航捷' },
+                                            ],
+                                            defaultValue: '上海平政'
+                                        }
+                                    }}
+                                    enableFileUpload={true}
+                                    enableApiParams={true}
+                                    downloadBaseUrl="/fentan/"
+                                />
+                            </Col>
+                        </Row>
+                    </div>
                 </TabPane>
-                
+
                 <TabPane tab="执行空运new" key="execute_air_new">
-                <ExecuteAirNew />
+                    <ExecuteAirNew />
                 </TabPane>
             </>
         );

@@ -17,6 +17,7 @@ import {
   Card,
   Row,
   Col,
+  Switch,
 } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import type { ColumnsType } from 'antd/es/table';
@@ -30,6 +31,7 @@ import {
   AppstoreAddOutlined,
   FilterOutlined,
   SearchOutlined,
+  MinusCircleOutlined,
 } from '@ant-design/icons';
 import type { MenuItem } from './menu';
 import { BulkAddPermissionsModal } from './BulkAddPermissionsModal';
@@ -41,6 +43,7 @@ export interface PermissionItem {
   action: string;
   menu_id?: string;
   description?: string;
+  dynamic_params?: Record<string, string>;
 }
 
 interface ApiEndpoint {
@@ -69,6 +72,7 @@ const PermissionItemManagement = () => {
   const [actionOptions, setActionOptions] = useState<string[]>([]);
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   const [searchForm] = Form.useForm();
+  const [enableDynamicParams, setEnableDynamicParams] = useState(false);
 
   const fetchMenuData = async () => {
     try {
@@ -163,6 +167,7 @@ const PermissionItemManagement = () => {
       form.setFieldsValue({ menu_id: selectedMenuId });
     }
     setEditingId(null);
+    setEnableDynamicParams(false);
     setIsModalVisible(true);
   };
 
@@ -173,8 +178,19 @@ const PermissionItemManagement = () => {
 
 
   const handleEdit = (record: PermissionItem) => {
-    form.setFieldsValue(record);
+    const hasDynamicParams = !!record.dynamic_params && Object.keys(record.dynamic_params).length > 0;
+    
+    // 转换 dynamic_params 对象为数组格式
+    const formValues = {
+      ...record,
+      dynamic_params: hasDynamicParams
+        ? Object.entries(record.dynamic_params!).map(([key, value]) => ({ key, value }))
+        : undefined,
+    };
+    
+    form.setFieldsValue(formValues);
     setEditingId(record.id || null);
+    setEnableDynamicParams(hasDynamicParams);
     setIsModalVisible(true);
   };
 
@@ -199,6 +215,19 @@ const PermissionItemManagement = () => {
           values.resource = parts[0];
           values.action = parts[1];
         }
+      }
+
+      // 处理动态参数
+      if (enableDynamicParams && values.dynamic_params) {
+        const paramsObj: Record<string, string> = {};
+        values.dynamic_params.forEach((param: { key: string; value: string }) => {
+          if (param.key && param.key.trim()) {
+            paramsObj[param.key.trim()] = param.value || '';
+          }
+        });
+        values.dynamic_params = paramsObj;
+      } else {
+        delete values.dynamic_params;
       }
 
       if (editingId) {
@@ -675,6 +704,77 @@ const PermissionItemManagement = () => {
           <Form.Item name="description" label="描述">
             <Input.TextArea placeholder="权限描述" rows={3} />
           </Form.Item>
+
+          {/* 动态参数开关 */}
+          <Form.Item label="动态参数（可选）">
+            <Space>
+              <Switch
+                checked={enableDynamicParams}
+                onChange={(checked) => {
+                  setEnableDynamicParams(checked);
+                  if (!checked) {
+                    form.setFieldsValue({ dynamic_params: undefined });
+                  }
+                }}
+              />
+              <span className="text-sm text-gray-500">
+                为此权限添加动态参数（如API路径参数、查询参数等）
+              </span>
+            </Space>
+          </Form.Item>
+
+          {/* 动态参数列表 */}
+          {enableDynamicParams && (
+            <Form.List name="dynamic_params">
+              {(fields, { add, remove }) => (
+                <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-sm font-medium text-gray-700">参数配置</span>
+                    <Button
+                      type="dashed"
+                      onClick={() => add()}
+                      icon={<PlusOutlined />}
+                      size="small"
+                    >
+                      添加参数
+                    </Button>
+                  </div>
+
+                  {fields.map(({ key, name, ...restField }) => (
+                    <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
+                      <Form.Item
+                        {...restField}
+                        name={[name, 'key']}
+                        rules={[{ required: true, message: '请输入参数名' }]}
+                        style={{ marginBottom: 0 }}
+                      >
+                        <Input placeholder="参数名（如：id, type）" style={{ width: 200 }} />
+                      </Form.Item>
+                      <Form.Item
+                        {...restField}
+                        name={[name, 'value']}
+                        style={{ marginBottom: 0 }}
+                      >
+                        <Input placeholder="参数值（可选）" style={{ width: 200 }} />
+                      </Form.Item>
+                      <MinusCircleOutlined
+                        onClick={() => remove(name)}
+                        style={{ color: '#ff4d4f', cursor: 'pointer' }}
+                      />
+                    </Space>
+                  ))}
+
+                  {fields.length === 0 && (
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="暂无参数，点击上方按钮添加"
+                      style={{ margin: '16px 0' }}
+                    />
+                  )}
+                </div>
+              )}
+            </Form.List>
+          )}
         </Form>
       </Modal>
 

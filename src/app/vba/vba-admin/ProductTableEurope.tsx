@@ -49,7 +49,7 @@ const ProductTableEurope: React.FC = () => {
         try {
             setLoadingProducts(true);
     
-            const response = await axiosInstance.get(`${server_url}/qingguan/products/?get_all=true&username=${userName}&country=Europe`);
+            const response = await axiosInstance.get(`${server_url}/qingguan/products/?get_all=true&username=${userName}&startland=China&destination=Europe`);
             const data = response.data;
     
             setAllProducts((prevProducts) => {
@@ -132,7 +132,7 @@ const ProductTableEurope: React.FC = () => {
     };
     const fetchProducts = async (append = false) => {
         setLoadingProducts(true);
-        const response = await axiosInstance.get(`${server_url}/qingguan/products?skip=${(productPage - 1) * productPageSize}&limit=${productPageSize}&名称=${productFilter}&username=${userName}&country=Europe`);
+        const response = await axiosInstance.get(`${server_url}/qingguan/products?skip=${(productPage - 1) * productPageSize}&limit=${productPageSize}&名称=${productFilter}&username=${userName}&startland=China&destination=Europe`);
         setTotalProducts(response.data.total);
         setProducts((prevProducts) => append ? [...prevProducts, ...response.data.items] : response.data.items);
         setLoadingProducts(false);

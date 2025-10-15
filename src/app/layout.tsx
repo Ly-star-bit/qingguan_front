@@ -70,6 +70,8 @@ const loadComponent = (path: string) => {
         return React.lazy(() => import('./business/order/page'));
     case '/business/dadan':
         return React.lazy(() => import('./business/dadan/page'));
+    case '/business/fentan':
+        return React.lazy(() => import('./business/fentan/page'));
     case '/business/dadan_new':
         return React.lazy(() => import('./business/dadan_new/page'));
     case '/business/fba_box_list':

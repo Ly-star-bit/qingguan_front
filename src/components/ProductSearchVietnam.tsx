@@ -45,6 +45,18 @@ interface ProductSearchProps {
     data: Product[];
     transport_type: string;
 }
+const StyledDescriptions = styled(Descriptions)`
+    .ant-descriptions-item-label {
+        text-align: right;
+    }
+    .ant-descriptions-item-content {
+        text-align: left;
+    }
+`;
+
+const RedText = styled.span`
+    color: red;
+`;
 
 const server_url = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8085";
 
@@ -81,9 +93,9 @@ const ProductSearchVietnam: React.FC<ProductSearchProps> = ({ data, transport_ty
             let url;
             console.log(transport_type);
             if (transport_type === "空运") {
-                url = `${server_url}/qingguan/products/?get_all=true&username=${userName}&country=Vietnam`;
+                url = `${server_url}/qingguan/products/?get_all=true&username=${userName}&startland=Vietnam&destination=America`;
             } else {
-                url = `${server_url}/qingguan/products_sea/?get_all=true&username=${userName}&country=Vietnam`;
+                url = `${server_url}/qingguan/products_sea/?get_all=true&username=${userName}&startland=Vietnam&destination=America`;
             }
             const response = await axiosInstance.get(url);
             
@@ -133,18 +145,6 @@ const ProductSearchVietnam: React.FC<ProductSearchProps> = ({ data, transport_ty
         setSelectedProduct(null);
     };
 
-    const StyledDescriptions = styled(Descriptions)`
-        .ant-descriptions-item-label {
-            text-align: right;
-        }
-        .ant-descriptions-item-content {
-            text-align: left;
-        }
-    `;
-
-    const RedText = styled.span`
-        color: red;
-    `;
 
     const columns: GridColDef<Product>[] = [
       

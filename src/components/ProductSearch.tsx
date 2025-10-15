@@ -45,7 +45,18 @@ interface ProductSearchProps {
     data: Product[];
     transport_type: string;
 }
+const StyledDescriptions = styled(Descriptions)`
+    .ant-descriptions-item-label {
+        text-align: right;
+    }
+    .ant-descriptions-item-content {
+        text-align: left;
+    }
+`;
 
+const RedText = styled.span`
+    color: red;
+`;
 const server_url = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8085";
 
 const ProductSearch: React.FC<ProductSearchProps> = ({ data, transport_type }) => {
@@ -81,9 +92,9 @@ const ProductSearch: React.FC<ProductSearchProps> = ({ data, transport_type }) =
             let url;
             console.log(transport_type);
             if (transport_type === "空运") {
-                url = `${server_url}/qingguan/products/?get_all=true&username=${userName}&zishui=false&is_hidden=false`;
+                url = `${server_url}/qingguan/products/?get_all=true&username=${userName}&zishui=false&is_hidden=false&startland=China&destination=America`;
             } else {
-                url = `${server_url}/qingguan/products_sea/?get_all=true&username=${userName}&zishui=false&is_hidden=false`;
+                url = `${server_url}/qingguan/products_sea/?get_all=true&username=${userName}&zishui=false&is_hidden=false&startland=China&destination=America`;
             }
             const response = await axiosInstance.get(url);
             
@@ -142,18 +153,7 @@ const ProductSearch: React.FC<ProductSearchProps> = ({ data, transport_type }) =
         setSelectedProduct(null);
     };
 
-    const StyledDescriptions = styled(Descriptions)`
-        .ant-descriptions-item-label {
-            text-align: right;
-        }
-        .ant-descriptions-item-content {
-            text-align: left;
-        }
-    `;
 
-    const RedText = styled.span`
-        color: red;
-    `;
 
     const columns: GridColDef<Product>[] = [
       

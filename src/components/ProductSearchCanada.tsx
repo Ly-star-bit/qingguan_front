@@ -41,7 +41,18 @@ export interface Product {
 interface ProductSearchProps {
     data: Product[];
 }
+const StyledDescriptions = styled(Descriptions)`
+    .ant-descriptions-item-label {
+        text-align: right;
+    }
+    .ant-descriptions-item-content {
+        text-align: left;
+    }
+`;
 
+const RedText = styled.span`
+    color: red;
+`;
 const server_url = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8085";
 
 const ProductSearchCanada: React.FC<ProductSearchProps> = (data) => {
@@ -55,7 +66,7 @@ const ProductSearchCanada: React.FC<ProductSearchProps> = (data) => {
     useEffect(() => {
         const fetchProducts = async () => {
             try {
-                const response = await axiosInstance.get(`${server_url}/qingguan/products/?get_all=true&username=${userName}&country=Canada`);
+                const response = await axiosInstance.get(`${server_url}/qingguan/products/?get_all=true&username=${userName}&startland=China&destination=Canada`);
                 setProducts(response.data.items);
                 setFilteredProducts(response.data.items);
             } catch (error) {
@@ -116,18 +127,7 @@ const ProductSearchCanada: React.FC<ProductSearchProps> = (data) => {
         setSelectedProduct(null);
     };
 
-    const StyledDescriptions = styled(Descriptions)`
-        .ant-descriptions-item-label {
-            text-align: right;
-        }
-        .ant-descriptions-item-content {
-            text-align: left;
-        }
-    `;
 
-    const RedText = styled.span`
-        color: red;
-    `;
 
     const columns: GridColDef<Product>[] = [
         {
