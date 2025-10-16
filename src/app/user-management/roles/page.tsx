@@ -26,6 +26,8 @@ interface ApiEndpoint {
   Path: string;
   Type: string;
   Description: string;
+  PermissionCode?: string;
+
 }
 
 interface Policy {
@@ -35,6 +37,7 @@ interface Policy {
   act?: string;
   eft?: string;
   description?: string;
+  attrs?: Record<string, any>; // 动态参数（对象）
 }
 
 interface MenuItem {
@@ -46,6 +49,17 @@ interface MenuItem {
   custom_api_paths?: string[];
   api_endpoints?: ApiEndpoint[];
   children?: MenuItem[];
+}
+
+interface PermissionItem {
+  id: string;
+  code: string;
+  name: string;
+  resource: string;
+  action: string;
+  menu_id?: string;
+  description?: string;
+  dynamic_params?: Record<string, string>;
 }
 
 const server_url = process.env.NEXT_PUBLIC_BACKEND_URL;
@@ -80,6 +94,8 @@ const RoleManagement: React.FC = () => {
   const [roleEndpoints, setRoleEndpoints] = useState<string[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [selectedMenuKeys, setSelectedMenuKeys] = useState<string[]>([]);
+  const [permissionItems, setPermissionItems] = useState<PermissionItem[]>([]);
+  const [selectedPermissionIds, setSelectedPermissionIds] = useState<string[]>([]);
   const actionRef = useRef<any>();
   
   const filteredAddEndpoints = useMemo(() => {
@@ -152,6 +168,16 @@ const RoleManagement: React.FC = () => {
     }
   };
 
+  // 获取权限项数据
+  const fetchPermissionItems = async () => {
+    try {
+      const response = await axiosInstance.get(`${server_url}/permission_item`);
+      setPermissionItems(response.data);
+    } catch (error) {
+      message.error('获取权限项数据失败');
+    }
+  };
+
   // 获取角色的所有权限策略
   const fetchRolePolicies = async (role: string) => {
     try {
@@ -195,6 +221,7 @@ const RoleManagement: React.FC = () => {
     fetchRoles(1, 20, true); // 获取所有角色数据
     fetchApiEndpoints();
     fetchMenuItems();
+    fetchPermissionItems();
   }, []);
 
   // 分页变化时只更新显示的数据
@@ -209,6 +236,7 @@ const RoleManagement: React.FC = () => {
   const handleAdd = () => {
     setEditingRole(null);
     setSelectedMenuKeys([]);
+    setSelectedPermissionIds([]);
     setIsModalVisible(true);
     form.resetFields();
   };
@@ -217,8 +245,8 @@ const RoleManagement: React.FC = () => {
     setEditingRole(record);
     form.setFieldsValue({ ...record });
     
-    // 直接从 permissions 获取菜单ID
-    setSelectedMenuKeys(record.permissions || []);
+    // 直接从 permissions 获取权限项ID
+    setSelectedPermissionIds(record.permissions || []);
     
     setIsModalVisible(true);
   };
@@ -236,14 +264,21 @@ const RoleManagement: React.FC = () => {
     }
   };
 
+  // 创建策略的唯一键：path::method::attrs_json
+  // 这样可以区分同一端点但不同动态参数的策略
+  const makePolicyKey = (obj: string, act: string, attrs: any) => {
+    const attrsStr = JSON.stringify(attrs || {});
+    return `${obj}::${act}::${attrsStr}`;
+  };
+
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
       
-      // 将选中的菜单ID放入permissions字段
+      // 将选中的权限项ID放入permissions字段
       const payload = {
         ...values,
-        permissions: selectedMenuKeys
+        permissions: selectedPermissionIds
       };
       
       if (editingRole) {
@@ -254,35 +289,32 @@ const RoleManagement: React.FC = () => {
         message.success('角色创建成功');
       }
       
-      // 根据选中的菜单获取对应的API端点，为角色创建/更新policy
+      // 根据选中的权限项获取对应的API端点，为角色创建/更新policy
       if (values.role_name) {
         try {
-          // 收集所有菜单的api_endpoint_ids的辅助函数
-          const collectApiEndpointIds = (menuKeys: string[]): Set<string> => {
-            const flatMenus: MenuItem[] = [];
-            const flattenMenus = (menus: MenuItem[]) => {
-              menus.forEach(menu => {
-                flatMenus.push(menu);
-                if (menu.children && menu.children.length > 0) {
-                  flattenMenus(menu.children);
-                }
-              });
-            };
-            flattenMenus(menuItems);
-            
-            const ids = new Set<string>();
-            menuKeys.forEach(menuId => {
-              const menu = flatMenus.find(m => m.id === menuId);
-              if (menu && menu.api_endpoint_ids && menu.api_endpoint_ids.length > 0) {
-                menu.api_endpoint_ids.forEach(id => ids.add(id));
-              }
-            });
-            return ids;
-          };
+          // 根据权限项code查找对应的API端点
+          // 注意：PermissionItem.code 对应 ApiEndpoint.id
+          const selectedPermissions = permissionItems.filter(p => selectedPermissionIds.includes(p.id));
+          const apiEndpointIds = new Set(selectedPermissions.map(p => p.code));
           
-          // 新选中的菜单对应的端点ID
-          const newApiEndpointIds = collectApiEndpointIds(selectedMenuKeys);
-          const newSelectedEndpoints = apiEndpoints.filter(api => newApiEndpointIds.has(api.id));
+          console.log('选中的权限项:', selectedPermissions);
+          console.log('API端点ID集合:', Array.from(apiEndpointIds));
+          
+          // 通过 API 端点 ID 过滤出对应的端点
+          const newSelectedEndpoints = apiEndpoints.filter(api => 
+            apiEndpointIds.has(api.id)
+          );
+          
+          console.log('匹配到的API端点数量:', newSelectedEndpoints.length);
+          console.log('匹配到的API端点:', newSelectedEndpoints.map(e => ({ id: e.id, path: e.Path, method: e.Method })));
+          
+          // 检查是否有权限项没有匹配到API端点
+          const matchedIds = new Set(newSelectedEndpoints.map(e => e.id));
+          const unmatchedIds = Array.from(apiEndpointIds).filter(id => !matchedIds.has(id));
+          if (unmatchedIds.length > 0) {
+            console.warn('以下API端点ID没有匹配到端点:', unmatchedIds);
+            message.warning(`有 ${unmatchedIds.length} 个权限项没有对应的API端点: ${unmatchedIds.join(', ')}`);
+          }
           
           // 获取已存在的策略（如果是编辑模式）
           let existingPolicies: Policy[] = [];
@@ -291,7 +323,7 @@ const RoleManagement: React.FC = () => {
           }
           
           const existingPolicyMap = new Map(
-            existingPolicies.map(p => [`${p.obj}::${p.act}`, p])
+            existingPolicies.map(p => [makePolicyKey(p.obj, p.act || '', p.attrs), p])
           );
           
           // 收集需要创建的新策略
@@ -299,48 +331,70 @@ const RoleManagement: React.FC = () => {
           // 收集需要更新的策略（deny -> allow）
           const policiesToUpdate: any[] = [];
           
-          for (const endpoint of newSelectedEndpoints) {
-            const key = `${endpoint.Path}::${endpoint.Method}`;
-            const existing = existingPolicyMap.get(key);
+          // 按权限项处理（而不是按endpoint），因为同一个endpoint可能对应多个权限项
+          for (const permission of selectedPermissions) {
+            const endpoint = apiEndpoints.find(api => api.id === permission.code);
+            if (!endpoint) {
+              console.warn('未找到API端点:', permission.code);
+              continue;
+            }
+            
+            const dynamicParams = permission.dynamic_params || {};
+            const policyKey = makePolicyKey(endpoint.Path, endpoint.Method, dynamicParams);
+            const existing = existingPolicyMap.get(policyKey);
             
             if (!existing) {
               // 策略不存在，需要创建
-              policiesToCreate.push({
+              const policyData: any = {
                 ptype: 'p',
                 sub: values.role_name,
                 obj: endpoint.Path,
                 act: endpoint.Method,
                 eft: 'allow',
                 description: endpoint.Description || `${values.role_name} - ${endpoint.Path}`
-              });
+              };
+              
+              // 添加动态参数（即使是空对象也要添加，以区分不同的策略）
+              policyData.attrs = dynamicParams;
+              
+              policiesToCreate.push(policyData);
             } else if (existing.eft === 'deny') {
               // 策略存在但是deny，需要更新为allow
-              policiesToUpdate.push({
+              const updateData: any = {
                 old_ptype: 'p',
                 old_sub: values.role_name,
                 old_obj: endpoint.Path,
                 old_act: endpoint.Method,
                 old_eft: 'deny',
+                old_attrs: existing.attrs || {},
                 old_description: existing.description || endpoint.Description || `${values.role_name} - ${endpoint.Path}`,
                 new_ptype: 'p',
                 new_sub: values.role_name,
                 new_obj: endpoint.Path,
                 new_act: endpoint.Method,
                 new_eft: 'allow',
+                new_attrs: dynamicParams,
                 new_description: endpoint.Description || `${values.role_name} - ${endpoint.Path}`
-              });
+              };
+              
+              policiesToUpdate.push(updateData);
             }
           }
           
-          // 处理被取消的菜单：将对应的policy设置为deny
+          // 处理被取消的权限项：将对应的policy设置为deny
           if (editingRole && editingRole.permissions) {
-            const oldApiEndpointIds = collectApiEndpointIds(editingRole.permissions);
-            const removedEndpointIds = Array.from(oldApiEndpointIds).filter(id => !newApiEndpointIds.has(id));
-            const removedEndpoints = apiEndpoints.filter(api => removedEndpointIds.includes(api.id));
+            const oldPermissions = permissionItems.filter(p => editingRole.permissions?.includes(p.id));
+            const removedPermissions = oldPermissions.filter(p => !selectedPermissionIds.includes(p.id));
             
-            for (const endpoint of removedEndpoints) {
-              const key = `${endpoint.Path}::${endpoint.Method}`;
-              const existing = existingPolicyMap.get(key);
+            for (const permission of removedPermissions) {
+              const endpoint = apiEndpoints.find(api => api.id === permission.code);
+              if (!endpoint) {
+                continue;
+              }
+              
+              const dynamicParams = permission.dynamic_params || {};
+              const policyKey = makePolicyKey(endpoint.Path, endpoint.Method, dynamicParams);
+              const existing = existingPolicyMap.get(policyKey);
               
               if (existing && existing.eft === 'allow') {
                 // 策略存在且是allow，需要更新为deny
@@ -350,12 +404,14 @@ const RoleManagement: React.FC = () => {
                   old_obj: endpoint.Path,
                   old_act: endpoint.Method,
                   old_eft: 'allow',
+                  old_attrs: dynamicParams,
                   old_description: existing.description || endpoint.Description || `${values.role_name} - ${endpoint.Path}`,
                   new_ptype: 'p',
                   new_sub: values.role_name,
                   new_obj: endpoint.Path,
                   new_act: endpoint.Method,
                   new_eft: 'deny',
+                  new_attrs: dynamicParams,
                   new_description: endpoint.Description || `${values.role_name} - ${endpoint.Path}`
                 });
               }
@@ -406,6 +462,7 @@ const RoleManagement: React.FC = () => {
       setIsModalVisible(false);
       form.resetFields();
       setSelectedMenuKeys([]);
+      setSelectedPermissionIds([]);
       fetchRoles();
       if (actionRef.current) {
         actionRef.current.reload();
@@ -419,6 +476,7 @@ const RoleManagement: React.FC = () => {
     setIsModalVisible(false);
     form.resetFields();
     setSelectedMenuKeys([]);
+    setSelectedPermissionIds([]);
   };
 
   // 将菜单转换为树形结构数据
@@ -428,6 +486,82 @@ const RoleManagement: React.FC = () => {
       key: menu.id,
       children: menu.children && menu.children.length > 0 ? convertMenuToTreeData(menu.children) : []
     }));
+  };
+
+  // 按 ApiGroup 和菜单分组权限项
+  const groupPermissionsByMenu = () => {
+    const grouped: any[] = [];
+    
+    // 创建 API 端点 ID 到 ApiGroup 的映射
+    const apiEndpointToGroup = new Map<string, string>();
+    apiEndpoints.forEach(api => {
+      apiEndpointToGroup.set(api.id, api.ApiGroup);
+    });
+    
+    // 按 ApiGroup 分组权限项
+    const permissionsByApiGroup = new Map<string, PermissionItem[]>();
+    const ungroupedPermissions: PermissionItem[] = [];
+    
+    permissionItems.forEach(p => {
+      const apiGroup = apiEndpointToGroup.get(p.code);
+      if (apiGroup) {
+        if (!permissionsByApiGroup.has(apiGroup)) {
+          permissionsByApiGroup.set(apiGroup, []);
+        }
+        permissionsByApiGroup.get(apiGroup)!.push(p);
+      } else {
+        ungroupedPermissions.push(p);
+      }
+    });
+    
+    // 渲染权限项节点的辅助函数
+    const renderPermissionNode = (p: PermissionItem) => {
+      const hasDynamicParams = p.dynamic_params && Object.keys(p.dynamic_params).length > 0;
+      const apiEndpoint = apiEndpoints.find(api => api.id === p.code);
+      
+      return {
+        title: (
+          <div className="flex items-center gap-2">
+            <span>{p.name}</span>
+            {apiEndpoint && (
+              <Tag color="geekblue" className="text-xs">{apiEndpoint.Method}</Tag>
+            )}
+            <code className="text-xs bg-gray-100 px-1 rounded">{apiEndpoint?.Path || p.code}</code>
+            {hasDynamicParams && (
+              <Tooltip title={<pre className="text-xs">{JSON.stringify(p.dynamic_params, null, 2)}</pre>}>
+                <Tag color="blue" className="text-xs cursor-help">动态参数</Tag>
+              </Tooltip>
+            )}
+          </div>
+        ),
+        key: p.id,
+        isLeaf: true
+      };
+    };
+    
+    // 添加按 ApiGroup 分组的权限项
+    Array.from(permissionsByApiGroup.entries())
+      .sort(([groupA], [groupB]) => groupA.localeCompare(groupB))
+      .forEach(([apiGroup, permissions]) => {
+        grouped.push({
+          title: `${apiGroup} (${permissions.length}个权限)`,
+          key: `apigroup-${apiGroup}`,
+          selectable: false,
+          children: permissions.map(renderPermissionNode)
+        });
+      });
+    
+    // 添加未分组的权限项
+    if (ungroupedPermissions.length > 0) {
+      grouped.push({
+        title: `未分组权限 (${ungroupedPermissions.length}个)`,
+        key: 'ungrouped',
+        selectable: false,
+        children: ungroupedPermissions.map(renderPermissionNode)
+      });
+    }
+    
+    return grouped;
   };
 
   // 将角色接口策略持久化到后端
@@ -444,6 +578,7 @@ const RoleManagement: React.FC = () => {
           sub: roleViewName,
           obj: p.obj,
           act: p.act,
+          attrs: p.attrs || {},
           eft: p.eft || 'allow',
           description: p.description || ''
         }))
@@ -473,6 +608,7 @@ const RoleManagement: React.FC = () => {
           sub: roleViewName,
           obj: endpointPath,
           act: apiEndpoint?.Method || 'GET',
+          attrs: {},
           eft: 'allow',
           description: apiEndpoint?.Description || ''
         };
@@ -710,19 +846,23 @@ const RoleManagement: React.FC = () => {
               />
             </Form.Item>
             <Form.Item
-              label="菜单权限"
-              extra="选择该角色可以访问的菜单，系统将自动创建对应的API接口权限"
+              label="权限项"
+              extra="选择该角色可以使用的权限项，系统将自动创建对应的API接口权限"
             >
               <Tree
                 checkable
-                checkedKeys={selectedMenuKeys}
+                checkedKeys={selectedPermissionIds}
                 onCheck={(checked) => {
-                  setSelectedMenuKeys(checked as string[]);
+                  // 过滤掉非叶子节点（ApiGroup分组节点和未分组节点）
+                  const checkedKeys = (checked as string[]).filter(key => 
+                    !key.startsWith('apigroup-') && !key.startsWith('menu-') && key !== 'ungrouped'
+                  );
+                  setSelectedPermissionIds(checkedKeys);
                 }}
-                treeData={convertMenuToTreeData(menuItems)}
+                treeData={groupPermissionsByMenu()}
                 defaultExpandAll={false}
                 showLine
-                style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #d9d9d9', borderRadius: '6px', padding: '8px' }}
+                style={{ maxHeight: '400px', overflowY: 'auto', border: '1px solid #d9d9d9', borderRadius: '6px', padding: '8px' }}
               />
             </Form.Item>
             <Form.Item
@@ -772,14 +912,19 @@ const RoleManagement: React.FC = () => {
                       try {
                         setIsUpdatingRole(true);
                         const toDelete = new Set(roleViewRowKeys as string[]);
-                        const selectedPolicies = roleViewPolicies.filter(p => toDelete.has(`${p.obj}::${p.act}`));
+                        const selectedPolicies = roleViewPolicies.filter(p => {
+                          const key = makePolicyKey(p.obj, p.act || '', p.attrs);
+                          return toDelete.has(key);
+                        });
                         const results = await Promise.allSettled(
                           selectedPolicies.map(p =>
                             axiosInstance.delete(`${server_url}/casbin/policies`, {
                               data: {
+                                ptype: 'p',
                                 sub: roleViewName,
                                 obj: p.obj,
                                 act: p.act,
+                                attrs: p.attrs || {},
                                 eft: p.eft || 'allow',
                                 description: p.description || ''
                               }
@@ -824,13 +969,32 @@ const RoleManagement: React.FC = () => {
               onChange: (keys) => setRoleViewRowKeys(keys as string[]),
               preserveSelectedRowKeys: true
             }}
-            rowKey={(r) => `${r.obj}::${r.act}`}
+            rowKey={(r) => makePolicyKey(r.obj, r.act || '', r.attrs)}
             pagination={false}
             size="small"
             columns={[
               { title: '主体/角色', dataIndex: 'sub', key: 'sub', width: 160, render: (text: string) => <Tag color="purple">{text}</Tag> },
               { title: '方法', dataIndex: 'act', key: 'act', width: 100, render: (text: string) => <Tag color="blue">{text}</Tag> },
               { title: '接口路径', dataIndex: 'obj', key: 'obj', render: (text: string) => <code className="bg-gray-100 px-2 py-0.5 rounded text-sm">{text}</code> },
+              { 
+                title: '动态参数', 
+                dataIndex: 'attrs', 
+                key: 'attrs', 
+                width: 140, 
+                render: (attrs: Record<string, any>) => {
+                  if (!attrs || Object.keys(attrs).length === 0) {
+                    return <span className="text-gray-400">无</span>;
+                  }
+                  const paramStr = Object.entries(attrs).map(([k, v]) => `${k}:${JSON.stringify(v)}`).join(', ');
+                  return (
+                    <Tooltip title={<pre className="text-xs">{JSON.stringify(attrs, null, 2)}</pre>}>
+                      <code className="text-xs bg-blue-50 px-1 py-0.5 rounded text-blue-700 cursor-help">
+                        {paramStr.length > 20 ? paramStr.substring(0, 20) + '...' : paramStr}
+                      </code>
+                    </Tooltip>
+                  );
+                }
+              },
               { title: '描述', dataIndex: 'description', key: 'description', width: 160, ellipsis: true, render: (description: string) => (
   <Tooltip title={description || '无描述'}>
     <span className="text-gray-600 truncate block">{description || '无描述'}</span>
@@ -858,6 +1022,7 @@ const RoleManagement: React.FC = () => {
                   sub: roleViewName,
                   obj: ep,
                   act: api?.Method || 'GET',
+                  attrs: {},
                   eft: 'allow',
                   description: api?.Description || ''
                 };

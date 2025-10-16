@@ -67,7 +67,7 @@ const PermissionItemManagement = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
-  const [permissionCodeOptions, setPermissionCodeOptions] = useState<{ value: string; label: string }[]>([]);
+  const [permissionCodeOptions, setPermissionCodeOptions] = useState<{ label: string; options: { value: string; label: string; }[] }[]>([]);
   const [resourceOptions, setResourceOptions] = useState<string[]>([]);
   const [actionOptions, setActionOptions] = useState<string[]>([]);
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
@@ -102,26 +102,25 @@ const PermissionItemManagement = () => {
     try {
       const response = await axiosInstance.get('/api_endpoints');
       const result = response.data;
-      // 将嵌套的API端点数据展开
-      const flat = Object.entries(result).reduce((acc: ApiEndpoint[], [group, endpoints]) => {
-        return acc.concat(endpoints as ApiEndpoint[]);
-      }, []);
       
-      // 提取所有唯一的PermissionCode
-      const codes = Array.from(
-        new Set(
-          flat
-            .filter(api => api.PermissionCode)
-            .map(api => api.PermissionCode!)
-        )
-      );
+      // 按 ApiGroup 分组组织 API 端点选项
+      const groupedOptions: { label: string; options: { value: string; label: string; }[] }[] = [];
       
-      setPermissionCodeOptions(
-        codes.map(code => ({
-          value: code,
-          label: code,
-        }))
-      );
+      Object.entries(result).forEach(([group, endpoints]) => {
+        const groupEndpoints = (endpoints as ApiEndpoint[]).map(api => ({
+          value: api.id,
+          label: `${api.Method} ${api.Path} - ${api.Description || api.id}`,
+        }));
+        
+        if (groupEndpoints.length > 0) {
+          groupedOptions.push({
+            label: group,
+            options: groupEndpoints
+          });
+        }
+      });
+      
+      setPermissionCodeOptions(groupedOptions);
     } catch (error) {
       message.error('获取API端点失败');
     }
@@ -208,14 +207,8 @@ const PermissionItemManagement = () => {
     try {
       const values = await form.validateFields();
       
-      // 根据 code 自动拆分 resource 和 action
-      if (values.code) {
-        const parts = values.code.split(':');
-        if (parts.length === 2) {
-          values.resource = parts[0];
-          values.action = parts[1];
-        }
-      }
+      // code 字段现在是API端点的ID，不需要拆分
+      // resource 和 action 由用户手动填写
 
       // 处理动态参数
       if (enableDynamicParams && values.dynamic_params) {
@@ -339,12 +332,12 @@ const PermissionItemManagement = () => {
 
   const columns: ColumnsType<PermissionItem> = [
     {
-      title: '权限代码',
+      title: 'API端点ID',
       dataIndex: 'code',
       key: 'code',
       width: 200,
       render: (code: string) => (
-        <code className="bg-green-50 px-2 py-1 rounded text-green-700 font-mono text-xs">
+        <code className="bg-blue-50 px-2 py-1 rounded text-blue-700 font-mono text-xs">
           {code}
         </code>
       ),
@@ -637,31 +630,21 @@ const PermissionItemManagement = () => {
         <Form form={form} layout="vertical" className="mt-4">
           <Form.Item
             name="code"
-            label="权限代码"
-             rules={[
-    { required: true, message: '请输入权限代码' },
-    {
-      pattern: /^[\u4e00-\u9fa5a-zA-Z0-9_]+:[\u4e00-\u9fa5a-zA-Z0-9_]+$/,
-      message: '格式应为: 资源:动作（如 用户:删除 或 user:delete）',
-    },
-  ]}
-  extra="格式：resource:action，例如 用户:删除, user:delete, 产品:创建。可从 API端点中选择或手动输入"
+            label="API端点ID"
+            rules={[
+              { required: true, message: '请选择或输入API端点ID' }
+            ]}
+            extra="选择一个API端点，此权限项将关联到该端点"
           >
-            <AutoComplete
-              placeholder="user:delete"
-              options={permissionCodeOptions}
-              filterOption={(inputValue, option) =>
-                option?.value.toLowerCase().includes(inputValue.toLowerCase()) || false
-              }
-              onSelect={(value) => {
-                const parts = value.split(':');
-                if (parts.length === 2) {
-                  form.setFieldsValue({
-                    resource: parts[0],
-                    action: parts[1]
-                  });
-                }
+            <Select
+              showSearch
+              placeholder="选择API端点"
+              filterOption={(input, option) => {
+                // 支持在分组中搜索
+                const label = option?.label?.toString() || '';
+                return label.toLowerCase().includes(input.toLowerCase());
               }}
+              options={permissionCodeOptions}
             />
           </Form.Item>
 

@@ -356,7 +356,7 @@ const ExecuteAir: React.FC = () => {
         //总货值
         const all_goods_price = newSelectedItems.reduce((acc, item) => acc + ((item as SelectedItem & { goods_price: number | null }).goods_price || 0), 0);
         const result = all_goods_price * 0.003464
-        const min_total = result < 32.71 ? 32.71 : (result > 634.62 ? 634.62 : result);
+        const min_total = result < 33.58 ? 33.58 : (result > 651.50 ? 651.50 : result);
         single_weight_calculate(Number(executeForm.getFieldValue('weight')), newSelectedItems)
         setTotalCarrierPrice(all_goods_price)
 
@@ -436,7 +436,7 @@ const ExecuteAir: React.FC = () => {
             all_goods_price += price;
         });
         const result = all_goods_price * 0.003464
-        const min_total = result < 32.71 ? 32.71 : (result > 634.62 ? 634.62 : result);
+        const min_total = result < 33.58 ? 33.58 : (result > 651.50 ? 651.50 : result);
         single_weight_calculate(Number(executeForm.getFieldValue('weight')), resolvedItems)
         setTotalCarrierPrice(all_goods_price)
         console.log('all_goods_price', all_goods_price)
@@ -447,7 +447,8 @@ const ExecuteAir: React.FC = () => {
     const handleProductSearch_Chinese = async (value: string | undefined) => {
         if (!value) return null;
         try {
-            const response = await axiosInstance.get(`${server_url}/qingguan/products?名称=${value}`);
+            const country = executeForm.getFieldValue('country');
+            const response = await axiosInstance.get(`${server_url}/qingguan/products?名称=${value}&startland=${country}&destination=America`);
             return response.data.items[0] as Product;
         } catch (error) {
             console.error('查询产品时出错:', error);
@@ -477,7 +478,7 @@ const ExecuteAir: React.FC = () => {
 
     };
     const fetchAllProducts = async (country: string = 'China') => {
-        const response = await axiosInstance.get(`${server_url}/qingguan/products/?get_all=true&username=${userName}&zishui=false&country=${country}&is_hidden=false`);
+        const response = await axiosInstance.get(`${server_url}/qingguan/products/?get_all=true&username=${userName}&zishui=false&startland=${country}&destination=America&is_hidden=false`);
         setAllProducts((prevProducts) => response.data.items);
     }
     const fetchAllPorts = async (append = false) => {
@@ -1033,7 +1034,7 @@ const ExecuteAir: React.FC = () => {
             const all_goods_price = resolvedItems.reduce((acc, item) =>
                 acc + ((item as SelectedItem & { goods_price: number | null }).goods_price || 0), 0);
             const result = all_goods_price * 0.003464;
-            const min_total = result < 32.71 ? 32.71 : (result > 634.62 ? 634.62 : result);
+            const min_total = result < 33.58 ? 33.58 : (result > 651.50 ? 651.50 : result);
             single_weight_calculate(Number(executeForm.getFieldValue('weight')), resolvedItems)
             setTotalCarrierPrice(all_goods_price)
 
@@ -1124,7 +1125,7 @@ const ExecuteAir: React.FC = () => {
         const all_goods_price = items.reduce((acc, item) => acc + ((item as SelectedItem & { goods_price: number | null }).goods_price || 0), 0);
 
         const result = all_goods_price * 0.003464;
-        const min_total = result < 32.71 ? 32.71 : (result > 634.62 ? 634.62 : result);
+        const min_total = result < 33.58 ? 33.58 : (result > 651.50 ? 651.50 : result);
 
         setTotalYuguTax(total);
         setTotalCarrierPrice(all_goods_price);
@@ -1258,7 +1259,7 @@ const ExecuteAir: React.FC = () => {
             acc + ((item as SelectedItem & { goods_price: number | null }).goods_price || 0), 0);
 
         const result = all_goods_price * 0.003464;
-        const min_total = result < 32.71 ? 32.71 : (result > 634.62 ? 634.62 : result);
+        const min_total = result < 33.58 ? 33.58 : (result > 651.50 ? 651.50 : result);
 
         setTotalCarrierPrice(all_goods_price);
         setTotalYuguTax(total);
@@ -1285,7 +1286,7 @@ const ExecuteAir: React.FC = () => {
         }, 0);
 
         const result = totalValue * 0.003464;
-        const mpf = result < 32.71 ? 32.71 : (result > 634.62 ? 634.62 : result);
+        const mpf = result < 33.58 ? 33.58 : (result > 651.50 ? 651.50 : result);
         const totalAllTaxUSD = totalTax + mpf;
         const taxPerKg = (totalAllTaxUSD / weight) * rate;
         return {
@@ -1569,7 +1570,7 @@ const ExecuteAir: React.FC = () => {
                     acc + ((item as SelectedItem & { goods_price: number | null }).goods_price || 0), 0);
 
                 const result = all_goods_price * 0.003464;
-                const min_total = result < 32.71 ? 32.71 : (result > 634.62 ? 634.62 : result);
+                const min_total = result < 33.58 ? 33.58 : (result > 651.50 ? 651.50 : result);
 
                 // 更新所有状态
                 setTotalCarrierPrice(all_goods_price);

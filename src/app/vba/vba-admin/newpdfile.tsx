@@ -1356,7 +1356,7 @@ const PdfViewDownload = () => {
             <iframe
               ref={iframeRef}
               key={currentPreviewFile}
-              src={`${server_url}/qingguan/luckysheet-preview`}
+              src={`${server_url}/luckysheet-preview`}
               style={{
                 width: '100%',
                 height: '100%',

@@ -10,6 +10,11 @@ type PermissionOption = {
   value: string; // 例如 "user:delete" 或 "order.update"
 };
 
+type PermissionOptionGroup = {
+  label: string;
+  options: PermissionOption[];
+};
+
 type MenuNode = {
   id: string | number;
   name: string;
@@ -30,8 +35,8 @@ type Props = {
   open: boolean;
   /** 关闭弹窗 */
   onClose: () => void;
-  /** 权限代码选项（来自后端 API） */
-  permissionCodeOptions: PermissionOption[];
+  /** 权限代码选项（来自后端 API） - 支持分组 */
+  permissionCodeOptions: PermissionOptionGroup[];
   /** 菜单树（用于下拉） */
   menuData: MenuNode[];
   /** 提交回调（对接你的创建接口） */

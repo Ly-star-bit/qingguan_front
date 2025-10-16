@@ -93,6 +93,13 @@ interface SubmissionHistoryEntry {
 
 // const server_url = "http://localhost:9008";
 const server_url = process.env.NEXT_PUBLIC_BACKEND_URL;
+
+// API端点配置
+const API_ENDPOINTS = {
+    air: '/qingguan/products/',
+    sea: '/qingguan/products_sea/'
+};
+
 // console.log(server_url)
 const ExecuteAirNew: React.FC = () => {
 
@@ -122,6 +129,9 @@ const ExecuteAirNew: React.FC = () => {
 
     //出口国
     const [selectedCountry, setSelectedCountry] = useState<string | undefined>();
+
+    //快递类型
+    const [shippingType, setShippingType] = useState<'air' | 'sea'>('air');
 
     //汇率
     const [CnUsdRate, setCnUsdRate] = useState<number | null>(null);
@@ -186,7 +196,7 @@ const ExecuteAirNew: React.FC = () => {
             fetchAllPorts()
         }
         console.log(CnUsdRate)
-    }, [selectedCountry]);
+    }, [selectedCountry, shippingType]);
 
     useEffect(() => {
         fetchExchangeRate();
@@ -267,7 +277,8 @@ const ExecuteAirNew: React.FC = () => {
         }
     };
     const fetchAllProducts = async (country: string = 'China') => {
-        const response = await axiosInstance.get(`${server_url}/qingguan/products/?get_all=true&username=${userName}&zishui=false&country=${country}&is_hidden=false`);
+        const endpoint = API_ENDPOINTS[shippingType];
+        const response = await axiosInstance.get(`${server_url}${endpoint}?get_all=true&username=${userName}&zishui=false&startland=${country}&destination=America&is_hidden=false`);
         setAllProducts(response.data.items);
     }
     const fetchAllPorts = async () => {
@@ -1101,36 +1112,38 @@ const ExecuteAirNew: React.FC = () => {
                 </div>
                 <Form className={styles.form} form={executeForm} onFinish={download_get_excel}>
                     <Form.Item
-                        label="FDA申报"
-                        name="fda_report"
-                        valuePropName="checked"
-                        rules={[{ required: false }]}
+                        label="快递类型"
+                        name="shipping_type"
+                        rules={[{ required: true, message: '请选择快递类型' }]}
+                        initialValue="air"
                     >
-                        <div style={{ display: 'flex', alignItems: 'center' }}>
-                            <Checkbox checked={isChecked} onChange={(e) => setIsChecked(e.target.checked)} />
-                            {isChecked && (
-                                <div style={{ display: 'flex', alignItems: 'center' }}>
-                                    <Typography.Text strong style={{ color: 'red', marginLeft: 8 }}>
-                                        请提交FDA信息给管理员+单独绑定FDA工厂地址
-                                    </Typography.Text>
-                                    <Typography.Text strong style={{ color: 'blue', marginLeft: 8 }}>
-                                        +提单收货人必须是SOLIMOES TRADING INC
-                                    </Typography.Text>
-                                </div>
-                            )}
-                        </div>
+                        <Select
+                            style={{ width: '100%' }}
+                            placeholder="请选择快递类型"
+                            onChange={(value: 'air' | 'sea') => {
+                                setShippingType(value);
+                                executeForm.setFieldsValue({ shipping_type: value });
+                                // 切换快递类型时重新获取产品数据
+                                if (selectedCountry) {
+                                    fetchAllProducts(selectedCountry);
+                                }
+                            }}
+                        >
+                            <Select.Option value="air">空运</Select.Option>
+                            <Select.Option value="sea">海运</Select.Option>
+                        </Select>
                     </Form.Item>
 
                     <Row gutter={16}>
                         <Col span={8}>
                             <Form.Item
-                                label="出口国"
+                                label="起始国（出口国）"
                                 name="country"
-                                rules={[{ required: true, message: '请选择出口国' }]}
+                                rules={[{ required: true, message: '请选择起始国' }]}
                             >
                                 <Select
                                     style={{ width: '100%' }}
-                                    placeholder="请选择出口国"
+                                    placeholder="请选择起始国（出口国）"
                                     onChange={(value) => {
                                         setSelectedCountry(value);
                                         executeForm.setFieldsValue({ country: value });
@@ -1414,6 +1427,31 @@ const ExecuteAirNew: React.FC = () => {
                                                 </span>
                                         }))}
                                     />
+                                </Form.Item>
+                            </Col>
+                        </Row>
+
+                        <Row gutter={16}>
+                            <Col span={24}>
+                                <Form.Item
+                                    label="FDA申报"
+                                    name="fda_report"
+                                    valuePropName="checked"
+                                    rules={[{ required: false }]}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                                        <Checkbox checked={isChecked} onChange={(e) => setIsChecked(e.target.checked)} />
+                                        {isChecked && (
+                                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                                                <Typography.Text strong style={{ color: 'red', marginLeft: 8 }}>
+                                                    请提交FDA信息给管理员+单独绑定FDA工厂地址
+                                                </Typography.Text>
+                                                <Typography.Text strong style={{ color: 'blue', marginLeft: 8 }}>
+                                                    +提单收货人必须是SOLIMOES TRADING INC
+                                                </Typography.Text>
+                                            </div>
+                                        )}
+                                    </div>
                                 </Form.Item>
                             </Col>
                         </Row>

@@ -644,7 +644,7 @@ const PdfViewDownloadUserAir = () => {
         {excelPreviewData && (
           <div style={{ width: '100%', height: '100%' }}>
             <iframe
-              src={`${server_url}/qingguan/luckysheet-preview?data=${Buffer.from(excelPreviewData).toString('base64')}`}
+              src={`${server_url}/luckysheet-preview?data=${Buffer.from(excelPreviewData).toString('base64')}`}
               style={{
                 width: '100%',
                 height: '100%',

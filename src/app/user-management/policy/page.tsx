@@ -14,6 +14,7 @@ interface Policy {
   obj: string;              // p策略: 资源/对象, g策略: 角色
   act?: string;             // p策略: 行为/动作
   eft?: string;             // p策略: 效果 (allow/deny)
+  attrs?: Record<string, any>; // p策略: 属性约束 (如 start, dest, type)
   description?: string;     // 策略描述
 }
 
@@ -43,13 +44,14 @@ interface SearchParams {
   description: string;
 }
 
-// 为表单处理后的值增加类型定义，包含可选的 batchEndpoints
+// 为表单处理后的值增加类型定义，包含可选的 batchEndpoints 和 attrs
 interface FormProcessedValues {
   ptype: 'p' | 'g' | 'g2';
   sub: string;
   obj: string;
   act?: string;
   eft?: string;
+  attrs?: Record<string, any>;
   description?: string;
   batchEndpoints?: string[];
 }
@@ -125,6 +127,7 @@ const PolicyPage = () => {
           obj: p.obj,
           act: p.act,
           eft: p.eft || 'allow',
+          attrs: p.attrs || {},
           description: p.description || '',
         })),
         ...(g_policies || []).map((g: any) => ({
@@ -251,7 +254,11 @@ const PolicyPage = () => {
       const response = await axiosInstance.get(`${server_url}/casbin/policies/get_role_policies`, {
         params: { role }
       });
-      return response.data;
+      // 确保返回的数据包含 attrs 字段
+      return (response.data || []).map((p: any) => ({
+        ...p,
+        attrs: p.attrs || {}
+      }));
     } catch (error) {
       message.error('获取角色权限策略失败');
       return [];
@@ -292,6 +299,7 @@ const PolicyPage = () => {
           sub: viewRoleName,
           obj: p.obj,
           act: p.act,
+          attrs: p.attrs || {},
           eft: p.eft || 'allow',
           description: p.description || ''
         }))
@@ -320,6 +328,7 @@ const PolicyPage = () => {
           sub: viewRoleName,
           obj: endpointPath,
           act: apiEndpoint?.Method || 'GET',
+          attrs: {},
           eft: 'allow',
           description: apiEndpoint?.Description || ''
         };
@@ -444,6 +453,7 @@ const PolicyPage = () => {
             sub: record.sub,
             obj: record.obj,
             act: record.act,
+            attrs: record.attrs || {},
             eft: record.eft,
             description: record.description
           }
@@ -493,18 +503,22 @@ const PolicyPage = () => {
           fetchGroups();
         } else {
           // 更新p策略
-          const updateData = {
+          const updateData = [{
+            old_ptype: 'p',
             old_sub: editingPolicy.sub,
             old_obj: editingPolicy.obj,
             old_act: editingPolicy.act,
+            old_attrs: editingPolicy.attrs || {},
             old_eft: editingPolicy.eft,
             old_description: editingPolicy.description,
+            new_ptype: 'p',
             new_sub: processedValues.sub,
             new_obj: processedValues.obj,
             new_act: processedValues.act,
+            new_attrs: processedValues.attrs || {},
             new_eft: processedValues.eft,
             new_description: processedValues.description,
-          };
+          }];
           await axiosInstance.put(`${server_url}/casbin/policies`, updateData);
           message.success('访问策略更新成功');
         }
@@ -542,6 +556,7 @@ const PolicyPage = () => {
                     sub: processedValues.sub,
                     obj: endpointPath,
                     act: apiEndpoint.Method,
+                    attrs: processedValues.attrs || {},
                     eft: processedValues.eft || 'allow',
                     description: processedValues.description || `${processedValues.sub} - ${apiEndpoint.Description || endpointPath}`
                   };
@@ -559,6 +574,7 @@ const PolicyPage = () => {
                ...processedValues,
                obj: Array.isArray(processedValues.obj) ? processedValues.obj[0] : processedValues.obj,
                act: Array.isArray(processedValues.act) ? processedValues.act[0] : processedValues.act,
+               attrs: processedValues.attrs || {},
              });
              message.success('策略创建成功');
            }
@@ -691,6 +707,28 @@ const PolicyPage = () => {
           eft === 'allow' ? 
             <Tag color="success" icon={<CheckCircleOutlined />}>允许</Tag> : 
             <Tag color="error" icon={<CloseCircleOutlined />}>拒绝</Tag>
+        ) : (
+          <span className="text-gray-400">-</span>
+        )
+      ),
+    },
+    {
+      title: '属性约束',
+      dataIndex: 'attrs',
+      key: 'attrs',
+      width: 160,
+      ellipsis: true,
+      render: (attrs, record) => (
+        record.ptype === 'p' && attrs && Object.keys(attrs).length > 0 ? (
+          <Tooltip title={JSON.stringify(attrs, null, 2)}>
+            <div className="flex flex-wrap gap-1">
+              {Object.entries(attrs).map(([key, value]) => (
+                <Tag key={key} color="cyan" className="text-xs">
+                  {key}: {String(value)}
+                </Tag>
+              ))}
+            </div>
+          </Tooltip>
         ) : (
           <span className="text-gray-400">-</span>
         )
@@ -1266,6 +1304,49 @@ const PolicyPage = () => {
                     <Select.Option value="deny">拒绝</Select.Option>
                   </Select>
                 </Form.Item>
+                <Form.Item
+                  name="attrs"
+                  label="属性约束 (JSON)"
+                  tooltip="用于基于属性的访问控制，如：起运地(start)、目的地(dest)、类型(type) 等"
+                  getValueFromEvent={(e) => {
+                    try {
+                      const value = e.target.value.trim();
+                      if (!value) return {};
+                      return JSON.parse(value);
+                    } catch {
+                      return e.target.value;
+                    }
+                  }}
+                  getValueProps={(value) => {
+                    if (typeof value === 'object' && value !== null) {
+                      return { value: JSON.stringify(value, null, 2) };
+                    }
+                    return { value: value || '' };
+                  }}
+                  rules={[
+                    {
+                      validator: async (_, value) => {
+                        if (!value || value === '') {
+                          return Promise.resolve();
+                        }
+                        try {
+                          if (typeof value === 'string') {
+                            JSON.parse(value);
+                          }
+                          return Promise.resolve();
+                        } catch (e) {
+                          return Promise.reject('请输入有效的 JSON 格式');
+                        }
+                      }
+                    }
+                  ]}
+                >
+                  <Input.TextArea
+                    placeholder='例如: {"start": "CN", "dest": "US", "type": "sea"}'
+                    rows={3}
+                    allowClear
+                  />
+                </Form.Item>
               </>
             )}
             
@@ -1373,6 +1454,7 @@ const PolicyPage = () => {
                                 sub: viewRoleName,
                                 obj: p.obj,
                                 act: p.act,
+                                attrs: p.attrs || {},
                                 eft: p.eft || 'allow',
                                 description: p.description || ''
                               }

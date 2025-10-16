@@ -289,7 +289,7 @@ const ExecuteCanada: React.FC = () => {
     const handleProductSearch_Chinese = async (value: string | undefined)=> {
         if (!value) return null;
         try {
-            const response = await axiosInstance.get(`${server_url}/qingguan/products?名称=${value}&country=Canada`);
+            const response = await axiosInstance.get(`${server_url}/qingguan/products?名称=${value}&startland=China&destination=Canada`);
             return response.data.items[0] as Product;
         } catch (error) {
             console.error('查询产品时出错:', error);
@@ -354,7 +354,7 @@ const ExecuteCanada: React.FC = () => {
         //总货值
         const all_goods_price = newSelectedItems.reduce((acc, item) => acc + ((item as SelectedItem & { goods_price: number | null }).goods_price || 0), 0);
         const result = all_goods_price * 0.003464
-        const min_total = result < 32.71 ? 32.71 : (result > 634.62 ? 634.62 : result);
+        const min_total = result < 33.58 ? 33.58 : (result > 651.50 ? 651.50 : result);
         const other_price = all_goods_price * 0.00125
         setTotalCarrierPrice(all_goods_price)
         setTotalAllYuguTax(total_duty + total_gst + min_total + other_price)
@@ -474,7 +474,7 @@ const ExecuteCanada: React.FC = () => {
 
     };
     const fetchAllProducts = async (append = false) => {
-        const response = await axiosInstance.get(`${server_url}/qingguan/products/?get_all=true&username=${userName}&country=Canada`);
+        const response = await axiosInstance.get(`${server_url}/qingguan/products/?get_all=true&username=${userName}&startland=China&destination=Canada`);
         setAllProducts((prevProducts) => append ? [...prevProducts, ...response.data.items] : response.data.items);
 
     }
