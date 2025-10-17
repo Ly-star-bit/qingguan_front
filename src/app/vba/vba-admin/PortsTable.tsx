@@ -273,7 +273,7 @@ const PortsPage: React.FC = () => {
             name="expansion_factor"
             label="膨胀系数"
             rules={[
-              { required: true, message: '请输入膨胀系数' },
+              { required: false, message: '请输入膨胀系数' },
               { 
                 validator: (_, value) => {
                   if (value && parseFloat(value) <= 1) {

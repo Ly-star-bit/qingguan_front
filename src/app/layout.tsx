@@ -60,8 +60,8 @@ const loadComponent = (path: string) => {
         return React.lazy(() => import('./user-management/policy/page'));
     case '/user-management/roles':
         return React.lazy(() => import('./user-management/roles/page'));
-    case '/user-management/user':
-        return React.lazy(() => import('./user-management/user/page'));
+    // case '/user-management/user':
+    //     return React.lazy(() => import('./user-management/user/page'));
     case '/vba/delivery':
         return React.lazy(() => import('./vba/delivery/page'));
     case '/user-management/users':

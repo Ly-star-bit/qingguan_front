@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Button, message, Modal, Form, Input, Space, Switch, Tabs, Tree, Input as AntInput, Skeleton, Card, Typography, Badge, Tag, Tooltip } from 'antd';
-import { UserOutlined, LockOutlined, KeyOutlined, DeleteOutlined, EditOutlined, SettingOutlined, PlusOutlined, SyncOutlined } from '@ant-design/icons';
+import { UserOutlined, LockOutlined, KeyOutlined, DeleteOutlined, EditOutlined, SettingOutlined, PlusOutlined, SyncOutlined, TeamOutlined } from '@ant-design/icons';
 import { ProTable } from '@ant-design/pro-components';
 import type { ProColumns, ActionType } from '@ant-design/pro-components';
 import axiosInstance from '@/utils/axiosInstance';
@@ -18,6 +18,13 @@ interface UserType {
   last_ip: string;
 }
 
+interface Role {
+  id: string;
+  role_name: string;
+  description?: string;
+  status: number;
+}
+
 interface MenuItem {
   id: string;
   name: string;
@@ -25,24 +32,33 @@ interface MenuItem {
   children?: MenuItem[];
 }
 
-interface ApiItem {
+interface PermissionItem {
+  id: string;
+  code: string;
+  name: string;
+  resource: string;
+  action: string;
+  menu_id?: string;
+  description?: string;
+  dynamic_params?: Record<string, string>;
+}
+
+interface ApiEndpoint {
+  id: string;
   ApiGroup: string;
   Method: string;
   Path: string;
+  Type: string;
   Description: string;
-  id: string;
 }
 
-interface ApiGroupData {
-  title: string;
+interface PermissionTreeNode {
+  title: any;
   key: string;
-  children: {
-    title: string;
-    key: string;
-    method: string;
-    path: string;
-    description: string;
-  }[];
+  children?: PermissionTreeNode[];
+  isLeaf?: boolean;
+  disabled?: boolean;
+  checkable?: boolean;
 }
 
 // 添加密码生成选项的接口
@@ -112,20 +128,23 @@ const UserManagement: React.FC = () => {
   const [permissionModalVisible, setPermissionModalVisible] = useState(false);
   const [modalTitle, setModalTitle] = useState('新增用户');
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [menuTree, setMenuTree] = useState<MenuItem[]>([]);
-  const [checkedKeys, setCheckedKeys] = useState<string[]>([]);
-  const [apiData, setApiData] = useState<ApiGroupData[]>([]);
-  const [checkedApiKeys, setCheckedApiKeys] = useState<string[]>([]);
-  const [apiSearchValue, setApiSearchValue] = useState('');
-  const [filteredApiData, setFilteredApiData] = useState<ApiGroupData[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [permissionItems, setPermissionItems] = useState<PermissionItem[]>([]);
+  const [checkedPermissionKeys, setCheckedPermissionKeys] = useState<string[]>([]);
+  const [inheritedPermissionKeys, setInheritedPermissionKeys] = useState<string[]>([]);
+  const [permissionSearchValue, setPermissionSearchValue] = useState('');
+  const [filteredPermissionData, setFilteredPermissionData] = useState<PermissionTreeNode[]>([]);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [permissionLoading, setPermissionLoading] = useState(false);
   const [permissionButtonLoadingId, setPermissionButtonLoadingId] = useState<string | null>(null);
   const [totalUsers, setTotalUsers] = useState<number>(0);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(false);
+  const [apiEndpoints, setApiEndpoints] = useState<ApiEndpoint[]>([]);
 
   // 添加缓存
-  const [menuCache, setMenuCache] = useState<{data: MenuItem[], timestamp: number} | null>(null);
-  const [apiCache, setApiCache] = useState<{data: ApiGroupData[], timestamp: number} | null>(null);
+  const [permissionCache, setPermissionCache] = useState<{data: PermissionItem[], timestamp: number} | null>(null);
   const CACHE_TIMEOUT = 5 * 60 * 1000; // 缓存有效期：5分钟
 
   // 获取用户总数
@@ -144,9 +163,42 @@ const UserManagement: React.FC = () => {
     }
   };
 
-  // 当组件首次加载时获取用户总数
+  // 获取API端点数据
+  const fetchApiEndpoints = async () => {
+    try {
+      const response = await axiosInstance.get(`${server_url}/api_endpoints`);
+      const endpointsData = response.data;
+      
+      // 将分组数据转换为平面数组
+      const allEndpoints: ApiEndpoint[] = [];
+      
+      Object.entries(endpointsData).forEach(([group, endpoints]) => {
+        (endpoints as ApiEndpoint[]).forEach(endpoint => {
+          allEndpoints.push(endpoint);
+        });
+      });
+      
+      setApiEndpoints(allEndpoints);
+    } catch (error) {
+      console.error('获取API端点数据失败:', error);
+    }
+  };
+
+  // 获取菜单数据
+  const fetchMenuItems = async () => {
+    try {
+      const response = await axiosInstance.get(`${server_url}/menu`);
+      setMenuItems(response.data);
+    } catch (error) {
+      console.error('获取菜单数据失败:', error);
+    }
+  };
+
+  // 当组件首次加载时获取用户总数、API端点和菜单数据
   useEffect(() => {
     fetchTotalUsers();
+    fetchApiEndpoints();
+    fetchMenuItems();
   }, []);
 
   const handleAdd = () => {
@@ -265,59 +317,121 @@ const UserManagement: React.FC = () => {
     }
   };
 
-  // 使用useCallback进行优化，避免不必要的函数重建
-  const getMenuData = useCallback(async () => {
+  // 获取权限项数据
+  const getPermissionData = useCallback(async () => {
     // 检查缓存是否有效
-    if (menuCache && Date.now() - menuCache.timestamp < CACHE_TIMEOUT) {
-      return menuCache.data;
+    if (permissionCache && Date.now() - permissionCache.timestamp < CACHE_TIMEOUT) {
+      return permissionCache.data;
     }
     
     // 缓存过期或不存在，重新获取数据
-    const menuResponse = await axiosInstance.get(`${server_url}/menu`);
-    const menuData = menuResponse.data;
+    const response = await axiosInstance.get(`${server_url}/permission_item`);
+    const permissions = response.data || [];
     
     // 更新缓存
-    setMenuCache({
-      data: menuData,
+    setPermissionCache({
+      data: permissions,
       timestamp: Date.now()
     });
     
-    return menuData;
-  }, [menuCache]);
-  
-  const getApiData = useCallback(async () => {
-    // 检查缓存是否有效
-    if (apiCache && Date.now() - apiCache.timestamp < CACHE_TIMEOUT) {
-      return apiCache.data;
+    return permissions;
+  }, [permissionCache]);
+
+  // 递归查找菜单项
+  const findMenuById = (id: string, menus: MenuItem[]): MenuItem | null => {
+    for (const menu of menus) {
+      if (menu.id === id) {
+        return menu;
+      }
+      if (menu.children) {
+        const found = findMenuById(id, menu.children);
+        if (found) return found;
+      }
     }
+    return null;
+  };
+
+  // 构建权限树 - 按照完整的菜单层级结构组织
+  const buildPermissionTree = (permissions: PermissionItem[], directPermissions: string[], inheritedPermissions: string[]): PermissionTreeNode[] => {
+    // 按 menu_id 分组权限项
+    const permissionsByMenu = new Map<string, PermissionItem[]>();
+    const noMenuPermissions: PermissionItem[] = [];
     
-    // 缓存过期或不存在，重新获取数据
-    const response = await axiosInstance.get(`${server_url}/api_endpoints`);
-    const apis = response.data || {};
+    permissions.forEach(p => {
+      if (p.menu_id) {
+        if (!permissionsByMenu.has(p.menu_id)) {
+          permissionsByMenu.set(p.menu_id, []);
+        }
+        permissionsByMenu.get(p.menu_id)!.push(p);
+      } else {
+        noMenuPermissions.push(p);
+      }
+    });
     
-    const groupedData = Object.entries(apis).map((entry): ApiGroupData => {
-      const [group, items] = entry as [string, ApiItem[]];
+    // 渲染权限项节点
+    const renderPermissionNode = (p: PermissionItem): PermissionTreeNode => {
+      const isInherited = inheritedPermissions.includes(p.id);
       return {
-        title: group,
-        key: `group-${group}`,
-        children: items.map(item => ({
-          title: item.Description,
-          key: item.id,
-          method: item.Method,
-          path: item.Path,
-          description: item.Description
-        }))
+        title: (
+          <Space>
+            <span>{p.name}</span>
+            {isInherited && <Tag color="blue">继承</Tag>}
+            {p.description && <Text type="secondary" style={{ fontSize: '12px' }}>({p.description})</Text>}
+          </Space>
+        ),
+        key: p.id,
+        isLeaf: true,
+        disabled: isInherited,
+        checkable: !isInherited
       };
-    });
+    };
     
-    // 更新缓存
-    setApiCache({
-      data: groupedData,
-      timestamp: Date.now()
-    });
+    // 递归构建菜单树节点
+    const buildMenuNodes = (menus: MenuItem[]): PermissionTreeNode[] => {
+      return menus.map(menu => {
+        const menuPermissions = permissionsByMenu.get(menu.id) || [];
+        const hasChildren = menu.children && menu.children.length > 0;
+        const hasPermissions = menuPermissions.length > 0;
+        
+        // 构建子节点：包含子菜单和当前菜单的权限项
+        const children: PermissionTreeNode[] = [];
+        
+        // 先添加子菜单
+        if (hasChildren) {
+          children.push(...buildMenuNodes(menu.children!));
+        }
+        
+        // 再添加当前菜单的权限项
+        if (hasPermissions) {
+          children.push(...menuPermissions.map(renderPermissionNode));
+        }
+        
+        // 如果既没有子菜单也没有权限项，则不显示该菜单
+        if (children.length === 0) {
+          return null;
+        }
+        
+        return {
+          title: menu.name,
+          key: `menu-${menu.id}`,
+          children
+        };
+      }).filter(node => node !== null) as PermissionTreeNode[];
+    };
     
-    return groupedData;
-  }, [apiCache]);
+    const tree: PermissionTreeNode[] = buildMenuNodes(menuItems);
+    
+    // 添加未分组的权限项
+    if (noMenuPermissions.length > 0) {
+      tree.push({
+        title: '未分组权限',
+        key: 'no-menu',
+        children: noMenuPermissions.map(renderPermissionNode)
+      });
+    }
+    
+    return tree;
+  };
 
   const handlePermission = async (record: UserType) => {
     try {
@@ -325,144 +439,403 @@ const UserManagement: React.FC = () => {
       setPermissionButtonLoadingId(record.id);
       setEditingId(record.id);
       
+      // 获取角色列表和用户已有的角色
+      fetchRoles();
+      const userRoles = await fetchUserRoles(record.username);
+      
       // 先不显示Modal，等数据加载完成后再显示
       
       // 并行请求数据，使用缓存机制
-      const [menuData, menuPermissionResponse, apiData, userApiResponse] = await Promise.all([
-        getMenuData(), // 使用缓存获取菜单数据
-        axiosInstance.get(`${server_url}/menu/user/get_user_menu_permissions?user_id=${record.id}`),
-        getApiData(), // 使用缓存获取API数据
-        axiosInstance.get(`${server_url}/user/get_user_api_permissions?user_id=${record.id}`)
+      const [permissionData, userPoliciesResponse] = await Promise.all([
+        getPermissionData(), // 使用缓存获取权限项数据
+        axiosInstance.get(`${server_url}/casbin/policies/get_user_policies`, {
+          params: { username: record.username }
+        })
       ]);
       
-      // 设置菜单树和用户菜单权限
-      setMenuTree(menuData);
-      setCheckedKeys(menuPermissionResponse.data || []);
+      // 设置权限项数据
+      setPermissionItems(permissionData);
       
-      // 设置API数据
-      setApiData(apiData);
-      setFilteredApiData(apiData);
-      setCheckedApiKeys(userApiResponse.data || []);
+      // 从 Casbin 策略中提取用户的直接权限
+      // 后端返回的是对象数组，格式：{ptype, sub, obj, act, attrs, eft, description}
+      const directPolicies = userPoliciesResponse.data || [];
+      
+      // 获取每个角色的权限策略，合并到继承权限中
+      const inheritedPermissionSet = new Set<string>();
+      for (const roleName of userRoles) {
+        try {
+          const rolePoliciesResponse = await axiosInstance.get(`${server_url}/casbin/policies/get_role_policies`, {
+            params: { role: roleName }
+          });
+          const rolePolicies = rolePoliciesResponse.data || [];
+          // 只统计 allow 的策略
+          rolePolicies
+            .filter((p: any) => p.eft === 'allow')
+            .forEach((p: any) => {
+              // 通过 obj(路径) 和 act(方法) 查找对应的权限项
+              const matchedPermission = permissionData.find((perm: PermissionItem) => {
+                const apiEndpoint = apiEndpoints.find(api => api.id === perm.code);
+                return apiEndpoint && apiEndpoint.Path === p.obj && apiEndpoint.Method === p.act;
+              });
+              if (matchedPermission) {
+                inheritedPermissionSet.add(matchedPermission.id);
+              }
+            });
+        } catch (error) {
+          console.warn(`获取角色 ${roleName} 的权限失败:`, error);
+        }
+      }
+      
+      // 将用户的直接策略转换为权限项ID
+      const userDirectPermissionIds: string[] = [];
+      for (const policy of directPolicies) {
+        const obj = policy.obj; // 对象属性：资源路径
+        const act = policy.act; // 对象属性：操作方法
+        
+        // 通过路径和方法查找对应的权限项
+        const matchedPermission = permissionData.find((perm: PermissionItem) => {
+          const apiEndpoint = apiEndpoints.find(api => api.id === perm.code);
+          return apiEndpoint && apiEndpoint.Path === obj && apiEndpoint.Method === act;
+        });
+        
+        if (matchedPermission) {
+          userDirectPermissionIds.push(matchedPermission.id);
+        }
+      }
+      
+      setCheckedPermissionKeys(userDirectPermissionIds);
+      setInheritedPermissionKeys(Array.from(inheritedPermissionSet));
+      
+      // 构建权限树并设置过滤数据
+      const treeData = buildPermissionTree(permissionData, userDirectPermissionIds, Array.from(inheritedPermissionSet));
+      setFilteredPermissionData(treeData);
       
       // 所有数据加载完成后再显示Modal
       setPermissionModalVisible(true);
     } catch (error) {
       message.error('获取权限数据失败');
+      console.error('获取权限数据失败:', error);
     } finally {
       setPermissionLoading(false);
       setPermissionButtonLoadingId(null);
     }
   };
 
-  // 处理树节点选择
-  const handleTreeCheck = (checked: any) => {
-    const checkedArray = Array.isArray(checked) ? checked : checked.checked;
-    const newCheckedKeys = new Set(checkedKeys);
-
-    const newlyChecked = checkedArray.filter((key: string) => !checkedKeys.includes(key));
-    const unchecked = checkedKeys.filter((key: string) => !checkedArray.includes(key));
-
-    newlyChecked.forEach((key: string) => {
-      newCheckedKeys.add(key);
-      const parentPath = getParentPath(key, menuTree);
-      parentPath.forEach((id) => newCheckedKeys.add(id));
-    });
-
-    unchecked.forEach((key: string) => {
-      newCheckedKeys.delete(key);
-    });
-
-    setCheckedKeys(Array.from(newCheckedKeys));
-  };
-
+  // 保存权限项
   const handlePermissionOk = async () => {
     try {
-      if (editingId) {
-        await axiosInstance.put(`${server_url}/menu/user/update_user_menu_permissions`, {
-          user_id: editingId,
-          menu_ids: checkedKeys,
-        });
-        message.success('菜单权限更新成功');
+      if (!editingId) {
+        message.error('无法确定要更新的用户');
+        return;
       }
+      
+      // 获取用户名
+      const userResponse = await axiosInstance.get(`${server_url}/users?skip=0&limit=10000`);
+      const users = userResponse.data.users || [];
+      const currentUser = users.find((u: UserType) => u.id === editingId);
+      if (!currentUser) {
+        message.error('用户不存在');
+        return;
+      }
+      const username = currentUser.username;
+      
+      // 获取当前用户的所有 p 策略（后端已经只返回 p 策略）
+      const currentPoliciesResponse = await axiosInstance.get(`${server_url}/casbin/policies/get_user_policies`, {
+        params: { username: username }
+      });
+      const currentDirectPolicies = currentPoliciesResponse.data || [];
+      
+      // 根据选中的权限项ID，构建需要的策略列表
+      const selectedPermissions = permissionItems.filter(p => checkedPermissionKeys.includes(p.id));
+      
+      // 获取 API 端点数据（如果还没有）
+      if (apiEndpoints.length === 0) {
+        const apiResponse = await axiosInstance.get(`${server_url}/api_endpoints`);
+        const endpointsData = apiResponse.data;
+        const allEndpoints: ApiEndpoint[] = [];
+        Object.entries(endpointsData).forEach(([group, endpoints]) => {
+          (endpoints as ApiEndpoint[]).forEach(endpoint => {
+            allEndpoints.push(endpoint);
+          });
+        });
+        setApiEndpoints(allEndpoints);
+      }
+      
+      // 收集需要创建和更新的策略
+      const policiesToCreate: any[] = [];
+      const policiesToUpdate: any[] = [];
+      
+      // 为每个选中的权限项创建/更新策略
+      for (const permission of selectedPermissions) {
+        const endpoint = apiEndpoints.find(api => api.id === permission.code);
+        if (!endpoint) {
+          console.warn('未找到API端点:', permission.code);
+          continue;
+        }
+        
+        const dynamicParams = permission.dynamic_params || {};
+        
+        // 检查是否已存在该策略
+        const existingPolicy = currentDirectPolicies.find((policy: any) => 
+          policy.obj === endpoint.Path && 
+          policy.act === endpoint.Method &&
+          JSON.stringify(policy.attrs || {}) === JSON.stringify(dynamicParams)
+        );
+        
+        if (!existingPolicy) {
+          // 策略不存在，需要创建
+          policiesToCreate.push({
+            ptype: 'p',
+            sub: username,
+            obj: endpoint.Path,
+            act: endpoint.Method,
+            eft: 'allow',
+            attrs: dynamicParams,
+            description: endpoint.Description || `${username} - ${endpoint.Path}`
+          });
+        } else if (existingPolicy.eft === 'deny') {
+          // 策略存在但是 deny，需要更新为 allow
+          policiesToUpdate.push({
+            old_ptype: 'p',
+            old_sub: username,
+            old_obj: endpoint.Path,
+            old_act: endpoint.Method,
+            old_eft: 'deny',
+            old_attrs: existingPolicy.attrs || {},
+            old_description: existingPolicy.description || endpoint.Description || `${username} - ${endpoint.Path}`,
+            new_ptype: 'p',
+            new_sub: username,
+            new_obj: endpoint.Path,
+            new_act: endpoint.Method,
+            new_eft: 'allow',
+            new_attrs: dynamicParams,
+            new_description: endpoint.Description || `${username} - ${endpoint.Path}`
+          });
+        }
+      }
+      
+      // 处理被取消选中的权限项：将对应的 policy 设置为 deny
+      const currentPermissionIds = new Set(checkedPermissionKeys);
+      for (const policy of currentDirectPolicies) {
+        if (policy.eft === 'deny') continue; // 跳过已经是 deny 的策略
+        
+        const obj = policy.obj;
+        const act = policy.act;
+        const attrs = policy.attrs || {};
+        
+        // 查找对应的权限项
+        const matchedPermission = permissionItems.find(perm => {
+          const endpoint = apiEndpoints.find(api => api.id === perm.code);
+          return endpoint && 
+                 endpoint.Path === obj && 
+                 endpoint.Method === act &&
+                 JSON.stringify(perm.dynamic_params || {}) === JSON.stringify(attrs);
+        });
+        
+        // 如果找到了权限项但它不在选中列表中，则需要更新为 deny
+        if (matchedPermission && !currentPermissionIds.has(matchedPermission.id)) {
+          const endpoint = apiEndpoints.find(api => api.id === matchedPermission.code);
+          if (endpoint) {
+            policiesToUpdate.push({
+              old_ptype: 'p',
+              old_sub: username,
+              old_obj: obj,
+              old_act: act,
+              old_eft: 'allow',
+              old_attrs: attrs,
+              old_description: policy.description || endpoint.Description || `${username} - ${obj}`,
+              new_ptype: 'p',
+              new_sub: username,
+              new_obj: obj,
+              new_act: act,
+              new_eft: 'deny',
+              new_attrs: attrs,
+              new_description: endpoint.Description || `${username} - ${obj}`
+            });
+          }
+        }
+      }
+      
+      // 批量创建新策略
+      let createCount = 0;
+      if (policiesToCreate.length > 0) {
+        for (const policy of policiesToCreate) {
+          try {
+            await axiosInstance.post(`${server_url}/casbin/policies`, policy);
+            createCount++;
+          } catch (error) {
+            console.warn('创建策略失败:', policy.obj);
+          }
+        }
+      }
+      
+      // 批量更新策略
+      let updateCount = 0;
+      if (policiesToUpdate.length > 0) {
+        try {
+          await axiosInstance.put(`${server_url}/casbin/policies`, policiesToUpdate);
+          updateCount = policiesToUpdate.length;
+        } catch (error) {
+          console.error('批量更新策略失败:', error);
+        }
+      }
+      
+      // 显示结果消息
+      const messages: string[] = [];
+      if (createCount > 0) {
+        messages.push(`创建 ${createCount} 个新权限`);
+      }
+      if (updateCount > 0) {
+        messages.push(`更新 ${updateCount} 个权限`);
+      }
+      if (messages.length > 0) {
+        message.success(`已为用户 ${username} ${messages.join('，')}`);
+      } else {
+        message.success('权限更新成功');
+      }
+      
       setPermissionModalVisible(false);
     } catch (error: any) {
-      message.error(error?.response?.data?.message || '菜单权限更新失败');
-    }
-  };
-  const handleApiPermissionOk = async () => {
-    try {
-      if (editingId) {
-        await axiosInstance.put(`${server_url}/user/update_user_api_permissions`, {
-          user_id: editingId,
-          api_ids: checkedApiKeys.filter((key: string) => !key.startsWith('group-')),
-        });
-        message.success('API权限更新成功');
-      }
-      setPermissionModalVisible(false);
-    } catch (error: any) {
-      message.error(error?.response?.data?.message || 'API权限更新失败');
+      console.error('权限更新失败:', error);
+      message.error(error?.response?.data?.message || '权限更新失败');
     }
   };
 
-  // 处理 API 搜索
-  const handleApiSearch = (value: string) => {
-    setApiSearchValue(value);
+  // 处理权限项搜索
+  const handlePermissionSearch = (value: string) => {
+    setPermissionSearchValue(value);
     if (!value) {
-      setFilteredApiData(apiData);
+      const treeData = buildPermissionTree(permissionItems, checkedPermissionKeys, inheritedPermissionKeys);
+      setFilteredPermissionData(treeData);
       return;
     }
 
     const lowerCaseValue = value.toLowerCase();
-    const filtered = apiData.map(group => ({
-      ...group,
-      children: group.children.filter(api =>
-        group.title.toLowerCase().includes(lowerCaseValue) ||
-        api.title.toLowerCase().includes(lowerCaseValue) ||
-        api.path.toLowerCase().includes(lowerCaseValue) ||
-        api.method.toLowerCase().includes(lowerCaseValue)
-      )
-    })).filter(group => group.children.length > 0);
-
-    setFilteredApiData(filtered);
+    const filtered = permissionItems.filter(p =>
+      p.name.toLowerCase().includes(lowerCaseValue) ||
+      (p.description && p.description.toLowerCase().includes(lowerCaseValue)) ||
+      p.code.toLowerCase().includes(lowerCaseValue)
+    );
+    
+    const treeData = buildPermissionTree(filtered, checkedPermissionKeys, inheritedPermissionKeys);
+    setFilteredPermissionData(treeData);
   };
 
-  // 处理 API 树节点选择
-  const handleApiTreeCheck = (checked: any) => {
+  // 获取角色列表
+  const fetchRoles = async () => {
+    try {
+      setRolesLoading(true);
+      const response = await axiosInstance.get(`${server_url}/roles/`, {
+        params: { all_data: true }
+      });
+      setRoles(response.data.roles || []);
+    } catch (error) {
+      message.error('获取角色列表失败');
+    } finally {
+      setRolesLoading(false);
+    }
+  };
+
+  // 获取用户已有的角色
+  const fetchUserRoles = async (username: string) => {
+    try {
+      const response = await axiosInstance.get(`${server_url}/casbin/policies/get_user_policies`, {
+        params: { username: username }
+      });
+      const policies = response.data || [];
+      // 只有 g2 策略才包含角色信息，需要单独获取
+      // 使用 /casbin/policies 接口获取 g2 策略
+      const g2Response = await axiosInstance.get(`${server_url}/casbin/policies`, {
+        params: { policy_type: 'g' }
+      });
+      const g2Policies = g2Response.data?.g_policies || [];
+      // 过滤出该用户的角色
+      const userRoles = g2Policies
+        .filter((g: any) => g.user === username)
+        .map((g: any) => g.role);
+      setSelectedRoles(userRoles);
+      return userRoles;
+    } catch (error) {
+      console.error('获取用户角色失败:', error);
+      setSelectedRoles([]);
+      return [];
+    }
+  };
+
+  // 保存角色继承
+  const handleRoleOk = async () => {
+    try {
+      if (!editingId) return;
+      
+      // 获取用户名（从表格数据中）
+      const userResponse = await axiosInstance.get(`${server_url}/users?skip=0&limit=10000`);
+      const users = userResponse.data.users || [];
+      const currentUser = users.find((u: UserType) => u.id === editingId);
+      if (!currentUser) {
+        message.error('用户不存在');
+        return;
+      }
+      const username = currentUser.username;
+      
+      // 获取当前用户的所有角色
+      const g2Response = await axiosInstance.get(`${server_url}/casbin/policies`, {
+        params: { policy_type: 'g' }
+      });
+      const g2Policies = g2Response.data?.g_policies || [];
+      const currentRoles = g2Policies
+        .filter((g: any) => g.user === username)
+        .map((g: any) => g.role);
+      
+      // 找出需要删除和添加的角色
+      const rolesToRemove = currentRoles.filter((role: string) => !selectedRoles.includes(role));
+      const rolesToAdd = selectedRoles.filter(role => !currentRoles.includes(role));
+      
+      // 删除不再需要的角色
+      for (const role of rolesToRemove) {
+        try {
+          await axiosInstance.delete(`${server_url}/casbin/policies/groups`, {
+            data: {
+              user: username,
+              group: role,
+              description: `用户 ${username} 具有 ${role} 角色`
+            }
+          });
+        } catch (error) {
+          console.warn(`删除角色失败: ${role}`);
+        }
+      }
+      
+      // 添加新的角色
+      for (const role of rolesToAdd) {
+        try {
+          await axiosInstance.post(`${server_url}/casbin/policies/groups`, {
+            ptype: 'g',
+            user: username,
+            group: role,
+            description: `用户 ${username} 具有 ${role} 角色`
+          });
+        } catch (error) {
+          console.warn(`添加角色失败: ${role}`);
+        }
+      }
+      
+      if (rolesToAdd.length > 0 || rolesToRemove.length > 0) {
+        message.success('角色继承更新成功');
+      }
+      setPermissionModalVisible(false);
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || '角色继承更新失败');
+    }
+  };
+
+  // 处理权限树节点选择
+  const handlePermissionTreeCheck = (checked: any) => {
     const checkedArray = Array.isArray(checked) ? checked : checked.checked;
-    let newCheckedKeys = new Set(checkedArray.map((key: any) => key.toString()));
-
-    // 处理分组选择
-    checkedArray.forEach((key: string) => {
-      // 如果是分组被选中
-      if (key.startsWith('group-')) {
-        // 找到对应的分组
-        const group = apiData.find(g => g.key === key);
-        if (group) {
-          // 添加该分组下所有子项的 key
-          group.children.forEach(child => {
-            newCheckedKeys.add(child.key.toString());
-          });
-        }
-      }
-    });
-
-    // 处理取消选择
-    const uncheckedKeys = checkedApiKeys.filter(key => !newCheckedKeys.has(key.toString()));
-    uncheckedKeys.forEach(key => {
-      // 如果是分组被取消选择
-      if (key.startsWith('group-')) {
-        // 找到对应的分组
-        const group = apiData.find(g => g.key === key);
-        if (group) {
-          // 移除该分组下所有子项的 key
-          group.children.forEach(child => {
-            newCheckedKeys.delete(child.key.toString());
-          });
-        }
-      }
-    });
-
-    setCheckedApiKeys(Array.from(newCheckedKeys) as string[]);
+    // 只保留权限项 ID，过滤掉分组节点
+    const permissionIds = checkedArray.filter((key: string) => 
+      !key.startsWith('menu-') && key !== 'no-menu'
+    );
+    setCheckedPermissionKeys(permissionIds);
   };
 
   /**
@@ -789,50 +1162,20 @@ const UserManagement: React.FC = () => {
         bodyStyle={{ padding: '16px' }}
         maskClosable={false}
       >
-        <Tabs defaultActiveKey="menu" type="card">
+        <Tabs defaultActiveKey="api" type="card">
           <Tabs.TabPane 
-            tab={<><UserOutlined /> 菜单权限</>} 
-            key="menu"
+            tab={<><KeyOutlined /> 权限项</>} 
+            key="permissions"
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {permissionLoading ? (
-                <div style={{ padding: '20px' }}>
-                  <Skeleton active paragraph={{ rows: 10 }} />
-                </div>
-              ) : (
-                <Card bordered={false}>
-                  <Tree
-                    checkable
-                    checkedKeys={checkedKeys}
-                    onCheck={handleTreeCheck}
-                    treeData={convertMenuToTreeData(menuTree)}
-                    defaultExpandAll
-                    checkStrictly={true}
-                    height={400}
-                    virtual
-                  />
-                </Card>
-              )}
-              <div style={{ textAlign: 'right', marginTop: '16px' }}>
-                <Space>
-                  <Button onClick={() => setPermissionModalVisible(false)}>
-                    取消
-                  </Button>
-                  <Button type="primary" onClick={handlePermissionOk} disabled={permissionLoading}>
-                    保存菜单权限
-                  </Button>
-                </Space>
+              <div>
+                <Text type="secondary">
+                  蓝色"继承"标签表示该权限通过角色继承获得，无法直接取消。如需取消，请在"角色继承" Tab中移除对应角色。
+                </Text>
               </div>
-            </div>
-          </Tabs.TabPane>
-          <Tabs.TabPane 
-            tab={<><SettingOutlined /> API权限</>} 
-            key="api"
-          >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <Search
-                placeholder="搜索 API..."
-                onChange={e => handleApiSearch(e.target.value)}
+                placeholder="搜索权限项..."
+                onChange={e => handlePermissionSearch(e.target.value)}
                 style={{ width: '100%' }}
                 disabled={permissionLoading}
                 allowClear
@@ -845,32 +1188,13 @@ const UserManagement: React.FC = () => {
                 <Card bordered={false}>
                   <Tree
                     checkable
-                    checkedKeys={checkedApiKeys}
-                    onCheck={handleApiTreeCheck}
-                    treeData={filteredApiData}
+                    checkedKeys={[...checkedPermissionKeys, ...inheritedPermissionKeys]}
+                    onCheck={handlePermissionTreeCheck}
+                    treeData={filteredPermissionData}
                     defaultExpandAll
-                    checkStrictly={true}
+                    checkStrictly={false}
                     height={400}
                     virtual
-                    titleRender={(node: any) => (
-                      <Space>
-                        {node.method ? (
-                          <>
-                            <Tag color={
-                              node.method === 'GET' ? 'green' : 
-                              node.method === 'POST' ? 'blue' :
-                              node.method === 'PUT' ? 'orange' : 'red'
-                            }>
-                              {node.method}
-                            </Tag>
-                            <Text code>{node.path}</Text>
-                            <Text type="secondary">{node.title}</Text>
-                          </>
-                        ) : (
-                          <Text strong>{node.title}</Text>
-                        )}
-                      </Space>
-                    )}
                   />
                 </Card>
               )}
@@ -879,8 +1203,82 @@ const UserManagement: React.FC = () => {
                   <Button onClick={() => setPermissionModalVisible(false)}>
                     取消
                   </Button>
-                  <Button type="primary" onClick={handleApiPermissionOk} disabled={permissionLoading}>
-                    保存API权限
+                  <Button type="primary" onClick={handlePermissionOk} disabled={permissionLoading}>
+                    保存权限
+                  </Button>
+                </Space>
+              </div>
+            </div>
+          </Tabs.TabPane>
+          <Tabs.TabPane 
+            tab={<><TeamOutlined /> 角色继承</>} 
+            key="roles"
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {permissionLoading || rolesLoading ? (
+                <div style={{ padding: '20px' }}>
+                  <Skeleton active paragraph={{ rows: 10 }} />
+                </div>
+              ) : (
+                <Card bordered={false}>
+                  <div style={{ marginBottom: '16px' }}>
+                    <Text type="secondary">选择用户继承的角色，用户将自动获得角色的所有权限</Text>
+                  </div>
+                  <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                    {roles.map(role => (
+                      <Card 
+                        key={role.id}
+                        size="small"
+                        hoverable
+                        style={{ 
+                          cursor: 'pointer',
+                          border: selectedRoles.includes(role.role_name) ? '2px solid #1890ff' : '1px solid #d9d9d9'
+                        }}
+                        onClick={() => {
+                          if (selectedRoles.includes(role.role_name)) {
+                            setSelectedRoles(selectedRoles.filter(r => r !== role.role_name));
+                          } else {
+                            setSelectedRoles([...selectedRoles, role.role_name]);
+                          }
+                        }}
+                      >
+                        <Space>
+                          <Badge 
+                            status={selectedRoles.includes(role.role_name) ? 'processing' : 'default'}
+                          />
+                          <TeamOutlined style={{ fontSize: '16px' }} />
+                          <div>
+                            <Text strong>{role.role_name}</Text>
+                            {role.description && (
+                              <div>
+                                <Text type="secondary" style={{ fontSize: '12px' }}>
+                                  {role.description}
+                                </Text>
+                              </div>
+                            )}
+                          </div>
+                          {role.status === 1 ? (
+                            <Tag color="success">启用</Tag>
+                          ) : (
+                            <Tag color="error">禁用</Tag>
+                          )}
+                        </Space>
+                      </Card>
+                    ))}
+                  </Space>
+                </Card>
+              )}
+              <div style={{ textAlign: 'right', marginTop: '16px' }}>
+                <Space>
+                  <Button onClick={() => setPermissionModalVisible(false)}>
+                    取消
+                  </Button>
+                  <Button 
+                    type="primary" 
+                    onClick={handleRoleOk} 
+                    disabled={permissionLoading || rolesLoading}
+                  >
+                    保存角色继承
                   </Button>
                 </Space>
               </div>

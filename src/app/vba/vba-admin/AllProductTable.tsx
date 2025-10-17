@@ -1017,6 +1017,70 @@ const AllProductTable: React.FC = () => {
 
                     <Row gutter={16}>
                         <Col span={12}>
+                            <Form.Item label="单件重量合理范围" name="单件重量合理范围">
+                                <Input />
+                            </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                            <Form.Item label="客户" name="客户">
+                                <Input />
+                            </Form.Item>
+                        </Col>
+                    </Row>
+
+                    <Row gutter={16}>
+                        <Col span={12}>
+                            <Form.Item label="报关代码" name="报关代码">
+                                <Input />
+                            </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                            <Form.Item label="客人资料美金" name="客人资料美金">
+                                <Input />
+                            </Form.Item>
+                        </Col>
+                    </Row>
+
+                    <Row gutter={16}>
+                        <Col span={12}>
+                            <Form.Item label="单箱重量(net weight)" name="single_weight">
+                                <InputNumber min={0} step={0.01} style={{ width: '100%' }} />
+                            </Form.Item>
+                        </Col>
+                    </Row>
+
+                    <Form.Item label="单箱重量范围" style={{ marginBottom: 16 }}>
+                        <Input.Group compact>
+                            <Form.Item
+                                name={['single_weight_range', 'min_weight_per_box']}
+                                style={{ display: 'inline-block', width: 'calc(50% - 12px)' }}
+                            >
+                                <InputNumber
+                                    placeholder="最小重量"
+                                    min={0}
+                                    step={0.01}
+                                    style={{ width: '100%' }}
+                                    addonBefore="最小"
+                                />
+                            </Form.Item>
+                            <span style={{ display: 'inline-block', width: '24px', textAlign: 'center', lineHeight: '32px' }}>~</span>
+                            <Form.Item
+                                name={['single_weight_range', 'max_weight_per_box']}
+                                style={{ display: 'inline-block', width: 'calc(50% - 12px)' }}
+                            >
+                                <InputNumber
+                                    placeholder="最大重量"
+                                    min={0}
+                                    step={0.01}
+                                    style={{ width: '100%' }}
+                                    addonBefore="最大"
+                                />
+                            </Form.Item>
+                        </Input.Group>
+                    </Form.Item>
+
+                    <Row gutter={16}>
+                        <Col span={12}>
                             <Form.Item label="自税" name="自税" rules={[{ required: true }]}>
                                 <Select placeholder="请选择自税">
                                     <Option value={true}>是</Option>

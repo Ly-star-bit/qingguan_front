@@ -488,29 +488,34 @@ const RoleManagement: React.FC = () => {
     }));
   };
 
-  // 按 ApiGroup 和菜单分组权限项
+  // 递归查找菜单项
+  const findMenuById = (id: string, menus: MenuItem[]): MenuItem | null => {
+    for (const menu of menus) {
+      if (menu.id === id) {
+        return menu;
+      }
+      if (menu.children) {
+        const found = findMenuById(id, menu.children);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
+  // 按完整的菜单层级结构组织权限项
   const groupPermissionsByMenu = () => {
-    const grouped: any[] = [];
-    
-    // 创建 API 端点 ID 到 ApiGroup 的映射
-    const apiEndpointToGroup = new Map<string, string>();
-    apiEndpoints.forEach(api => {
-      apiEndpointToGroup.set(api.id, api.ApiGroup);
-    });
-    
-    // 按 ApiGroup 分组权限项
-    const permissionsByApiGroup = new Map<string, PermissionItem[]>();
-    const ungroupedPermissions: PermissionItem[] = [];
+    // 按 menu_id 分组权限项
+    const permissionsByMenu = new Map<string, PermissionItem[]>();
+    const noMenuPermissions: PermissionItem[] = [];
     
     permissionItems.forEach(p => {
-      const apiGroup = apiEndpointToGroup.get(p.code);
-      if (apiGroup) {
-        if (!permissionsByApiGroup.has(apiGroup)) {
-          permissionsByApiGroup.set(apiGroup, []);
+      if (p.menu_id) {
+        if (!permissionsByMenu.has(p.menu_id)) {
+          permissionsByMenu.set(p.menu_id, []);
         }
-        permissionsByApiGroup.get(apiGroup)!.push(p);
+        permissionsByMenu.get(p.menu_id)!.push(p);
       } else {
-        ungroupedPermissions.push(p);
+        noMenuPermissions.push(p);
       }
     });
     
@@ -523,10 +528,7 @@ const RoleManagement: React.FC = () => {
         title: (
           <div className="flex items-center gap-2">
             <span>{p.name}</span>
-            {apiEndpoint && (
-              <Tag color="geekblue" className="text-xs">{apiEndpoint.Method}</Tag>
-            )}
-            <code className="text-xs bg-gray-100 px-1 rounded">{apiEndpoint?.Path || p.code}</code>
+          
             {hasDynamicParams && (
               <Tooltip title={<pre className="text-xs">{JSON.stringify(p.dynamic_params, null, 2)}</pre>}>
                 <Tag color="blue" className="text-xs cursor-help">动态参数</Tag>
@@ -539,29 +541,51 @@ const RoleManagement: React.FC = () => {
       };
     };
     
-    // 添加按 ApiGroup 分组的权限项
-    Array.from(permissionsByApiGroup.entries())
-      .sort(([groupA], [groupB]) => groupA.localeCompare(groupB))
-      .forEach(([apiGroup, permissions]) => {
-        grouped.push({
-          title: `${apiGroup} (${permissions.length}个权限)`,
-          key: `apigroup-${apiGroup}`,
-          selectable: false,
-          children: permissions.map(renderPermissionNode)
-        });
-      });
+    // 递归构建菜单树节点
+    const buildMenuNodes = (menus: MenuItem[]): any[] => {
+      return menus.map(menu => {
+        const menuPermissions = permissionsByMenu.get(menu.id) || [];
+        const hasChildren = menu.children && menu.children.length > 0;
+        const hasPermissions = menuPermissions.length > 0;
+        
+        // 构建子节点：包含子菜单和当前菜单的权限项
+        const children: any[] = [];
+        
+        // 先添加子菜单
+        if (hasChildren) {
+          children.push(...buildMenuNodes(menu.children!));
+        }
+        
+        // 再添加当前菜单的权限项
+        if (hasPermissions) {
+          children.push(...menuPermissions.map(renderPermissionNode));
+        }
+        
+        // 如果既没有子菜单也没有权限项，则不显示该菜单
+        if (children.length === 0) {
+          return null;
+        }
+        
+        return {
+          title: menu.name,
+          key: `menu-${menu.id}`,
+          children
+        };
+      }).filter(node => node !== null);
+    };
+    
+    const tree: any[] = buildMenuNodes(menuItems);
     
     // 添加未分组的权限项
-    if (ungroupedPermissions.length > 0) {
-      grouped.push({
-        title: `未分组权限 (${ungroupedPermissions.length}个)`,
+    if (noMenuPermissions.length > 0) {
+      tree.push({
+        title: `未分组权限 (${noMenuPermissions.length}个)`,
         key: 'ungrouped',
-        selectable: false,
-        children: ungroupedPermissions.map(renderPermissionNode)
+        children: noMenuPermissions.map(renderPermissionNode)
       });
     }
     
-    return grouped;
+    return tree;
   };
 
   // 将角色接口策略持久化到后端

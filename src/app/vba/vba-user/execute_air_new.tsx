@@ -862,13 +862,13 @@ const ExecuteAirNew: React.FC = () => {
             
             // 准备产品数据 - 根据接口规范，products_data 可以为空
             let productsData: any[] = [];
-            
+            console.log(selectedProducts)
             if (selectedProducts.length > 0) {
                 // 如果选择了产品，则准备产品数据
                 productsData = selectedProducts.map(productName => {
                     const product = allProducts.find(p => p.中文品名 === productName);
                     if (!product) return null;
-                    
+                    console.log(product)
                     return {
                         name: product.中文品名,
                         price: Number(product.单价) || 0,
@@ -882,7 +882,7 @@ const ExecuteAirNew: React.FC = () => {
                 }).filter(Boolean);
             }
             // 如果没有选择产品，products_data 为空数组，后端会自动从API获取
-            
+            console.log(productsData)
             // 获取当前选中的港口的 expansion_factor
             const selectedPortName = executeForm.getFieldValue('port');
             const selectedPort = PortContent.find(p => p.port_name === selectedPortName);
