@@ -57,7 +57,8 @@ interface PermissionItem {
   name: string;
   resource: string;
   action: string;
-  menu_id?: string;
+  menu_id?: string;  // 保留用于向后兼容
+  menu_ids?: string[];  // 新增：支持多个菜单
   description?: string;
   dynamic_params?: Record<string, string>;
 }
@@ -97,6 +98,9 @@ const RoleManagement: React.FC = () => {
   const [permissionItems, setPermissionItems] = useState<PermissionItem[]>([]);
   const [selectedPermissionIds, setSelectedPermissionIds] = useState<string[]>([]);
   const actionRef = useRef<any>();
+  const [permissionModalVisible, setPermissionModalVisible] = useState(false);
+  const [permissionSearchText, setPermissionSearchText] = useState('');
+  const [expandedPermissionKeys, setExpandedPermissionKeys] = useState<string[]>([]);
   
   const filteredAddEndpoints = useMemo(() => {
     const currentSet = new Set(roleEndpoints);
@@ -237,6 +241,8 @@ const RoleManagement: React.FC = () => {
     setEditingRole(null);
     setSelectedMenuKeys([]);
     setSelectedPermissionIds([]);
+    setPermissionSearchText('');
+    setExpandedPermissionKeys([]);
     setIsModalVisible(true);
     form.resetFields();
   };
@@ -247,6 +253,8 @@ const RoleManagement: React.FC = () => {
     
     // 直接从 permissions 获取权限项ID
     setSelectedPermissionIds(record.permissions || []);
+    setPermissionSearchText('');
+    setExpandedPermissionKeys([]);
     
     setIsModalVisible(true);
   };
@@ -477,6 +485,8 @@ const RoleManagement: React.FC = () => {
     form.resetFields();
     setSelectedMenuKeys([]);
     setSelectedPermissionIds([]);
+    setPermissionSearchText('');
+    setExpandedPermissionKeys([]);
   };
 
   // 将菜单转换为树形结构数据
@@ -503,17 +513,24 @@ const RoleManagement: React.FC = () => {
   };
 
   // 按完整的菜单层级结构组织权限项
-  const groupPermissionsByMenu = () => {
-    // 按 menu_id 分组权限项
+  const groupPermissionsByMenu = (searchText = '') => {
+    const lowerSearchText = searchText.toLowerCase().trim();
+    // 按 menu_id 或 menu_ids 分组权限项
     const permissionsByMenu = new Map<string, PermissionItem[]>();
     const noMenuPermissions: PermissionItem[] = [];
     
     permissionItems.forEach(p => {
-      if (p.menu_id) {
-        if (!permissionsByMenu.has(p.menu_id)) {
-          permissionsByMenu.set(p.menu_id, []);
-        }
-        permissionsByMenu.get(p.menu_id)!.push(p);
+      // 支持新旧格式：优先使用 menu_ids，如果没有则使用 menu_id
+      const menuIdList = p.menu_ids || (p.menu_id ? [p.menu_id] : []);
+      
+      if (menuIdList.length > 0) {
+        // 一个权限项可能关联多个菜单，需要将其添加到每个菜单的分组中
+        menuIdList.forEach(menuId => {
+          if (!permissionsByMenu.has(menuId)) {
+            permissionsByMenu.set(menuId, []);
+          }
+          permissionsByMenu.get(menuId)!.push(p);
+        });
       } else {
         noMenuPermissions.push(p);
       }
@@ -523,6 +540,18 @@ const RoleManagement: React.FC = () => {
     const renderPermissionNode = (p: PermissionItem) => {
       const hasDynamicParams = p.dynamic_params && Object.keys(p.dynamic_params).length > 0;
       const apiEndpoint = apiEndpoints.find(api => api.id === p.code);
+      
+      // 搜索过滤
+      if (lowerSearchText) {
+        const matchName = p.name.toLowerCase().includes(lowerSearchText);
+        const matchResource = p.resource?.toLowerCase().includes(lowerSearchText);
+        const matchAction = p.action?.toLowerCase().includes(lowerSearchText);
+        const matchDescription = p.description?.toLowerCase().includes(lowerSearchText);
+        
+        if (!matchName && !matchResource && !matchAction && !matchDescription) {
+          return null;
+        }
+      }
       
       return {
         title: (
@@ -556,15 +585,19 @@ const RoleManagement: React.FC = () => {
           children.push(...buildMenuNodes(menu.children!));
         }
         
-        // 再添加当前菜单的权限项
+        // 再添加当前菜单的权限项（过滤掉null）
         if (hasPermissions) {
-          children.push(...menuPermissions.map(renderPermissionNode));
+          const permissionNodes = menuPermissions.map(renderPermissionNode).filter(node => node !== null);
+          children.push(...permissionNodes);
         }
         
         // 如果既没有子菜单也没有权限项，则不显示该菜单
         if (children.length === 0) {
           return null;
         }
+        
+        // 如果有搜索文本，菜单名称也进行匹配
+        const menuMatch = !lowerSearchText || menu.name.toLowerCase().includes(lowerSearchText);
         
         return {
           title: menu.name,
@@ -576,13 +609,16 @@ const RoleManagement: React.FC = () => {
     
     const tree: any[] = buildMenuNodes(menuItems);
     
-    // 添加未分组的权限项
+    // 添加未分组的权限项（过滤掉null）
     if (noMenuPermissions.length > 0) {
-      tree.push({
-        title: `未分组权限 (${noMenuPermissions.length}个)`,
-        key: 'ungrouped',
-        children: noMenuPermissions.map(renderPermissionNode)
-      });
+      const ungroupedNodes = noMenuPermissions.map(renderPermissionNode).filter(node => node !== null);
+      if (ungroupedNodes.length > 0) {
+        tree.push({
+          title: `未分组权限 (${ungroupedNodes.length}个)`,
+          key: 'ungrouped',
+          children: ungroupedNodes
+        });
+      }
     }
     
     return tree;
@@ -873,21 +909,14 @@ const RoleManagement: React.FC = () => {
               label="权限项"
               extra="选择该角色可以使用的权限项，系统将自动创建对应的API接口权限"
             >
-              <Tree
-                checkable
-                checkedKeys={selectedPermissionIds}
-                onCheck={(checked) => {
-                  // 过滤掉非叶子节点（ApiGroup分组节点和未分组节点）
-                  const checkedKeys = (checked as string[]).filter(key => 
-                    !key.startsWith('apigroup-') && !key.startsWith('menu-') && key !== 'ungrouped'
-                  );
-                  setSelectedPermissionIds(checkedKeys);
-                }}
-                treeData={groupPermissionsByMenu()}
-                defaultExpandAll={false}
-                showLine
-                style={{ maxHeight: '400px', overflowY: 'auto', border: '1px solid #d9d9d9', borderRadius: '6px', padding: '8px' }}
-              />
+              <Button 
+                type="dashed" 
+                icon={<PlusOutlined />}
+                onClick={() => setPermissionModalVisible(true)}
+                block
+              >
+                选择权限项 {selectedPermissionIds.length > 0 && `(已选 ${selectedPermissionIds.length} 项)`}
+              </Button>
             </Form.Item>
             <Form.Item
               name="status"
@@ -901,6 +930,69 @@ const RoleManagement: React.FC = () => {
               />
             </Form.Item>
           </Form>
+        </Modal>
+
+        {/* 权限项选择 Modal */}
+        <Modal
+          title={
+            <Title level={4} style={{ margin: 0 }}>
+              选择权限项
+            </Title>
+          }
+          open={permissionModalVisible}
+          onOk={() => setPermissionModalVisible(false)}
+          onCancel={() => setPermissionModalVisible(false)}
+          width={800}
+          okText="确定"
+          cancelText="取消"
+        >
+          <div className="mb-4">
+            <Input
+              placeholder="搜索权限项名称、资源、操作或描述..."
+              prefix={<SearchOutlined />}
+              value={permissionSearchText}
+              onChange={(e) => {
+                setPermissionSearchText(e.target.value);
+                // 如果有搜索文本，自动展开所有节点
+                if (e.target.value.trim()) {
+                  const getAllKeys = (nodes: any[]): string[] => {
+                    let keys: string[] = [];
+                    nodes.forEach(node => {
+                      keys.push(node.key);
+                      if (node.children) {
+                        keys = keys.concat(getAllKeys(node.children));
+                      }
+                    });
+                    return keys;
+                  };
+                  const allKeys = getAllKeys(groupPermissionsByMenu(e.target.value));
+                  setExpandedPermissionKeys(allKeys);
+                } else {
+                  setExpandedPermissionKeys([]);
+                }
+              }}
+              allowClear
+            />
+          </div>
+          <div className="mb-2 text-gray-600 text-sm">
+            已选择 {selectedPermissionIds.length} 个权限项
+          </div>
+          <Tree
+            checkable
+            checkedKeys={selectedPermissionIds}
+            expandedKeys={expandedPermissionKeys}
+            onExpand={(keys) => setExpandedPermissionKeys(keys as string[])}
+            onCheck={(checked) => {
+              // 过滤掉非叶子节点（ApiGroup分组节点和未分组节点）
+              const checkedKeys = (checked as string[]).filter(key => 
+                !key.startsWith('apigroup-') && !key.startsWith('menu-') && key !== 'ungrouped'
+              );
+              setSelectedPermissionIds(checkedKeys);
+            }}
+            treeData={groupPermissionsByMenu(permissionSearchText)}
+            showLine
+            style={{ maxHeight: '500px', overflowY: 'auto', border: '1px solid #d9d9d9', borderRadius: '6px', padding: '8px' }}
+          />
         </Modal>
 
         {/* 查看角色接口 Modal */}

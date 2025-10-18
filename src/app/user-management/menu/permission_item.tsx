@@ -18,7 +18,9 @@ import {
   Row,
   Col,
   Switch,
+  Dropdown,
 } from 'antd';
+import type { MenuProps } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import type { ColumnsType } from 'antd/es/table';
 import axiosInstance from '@/utils/axiosInstance';
@@ -32,6 +34,9 @@ import {
   FilterOutlined,
   SearchOutlined,
   MinusCircleOutlined,
+  CopyOutlined,
+  MoreOutlined,
+  EllipsisOutlined,
 } from '@ant-design/icons';
 import type { MenuItem } from './menu';
 import { BulkAddPermissionsModal } from './BulkAddPermissionsModal';
@@ -41,7 +46,8 @@ export interface PermissionItem {
   name: string;
   resource: string;
   action: string;
-  menu_id?: string;
+  menu_id?: string;  // 保留用于向后兼容
+  menu_ids?: string[];  // 新增：支持多个菜单
   description?: string;
   dynamic_params?: Record<string, string>;
 }
@@ -147,9 +153,15 @@ const PermissionItemManagement = () => {
   const applyFilters = () => {
     let filtered = permissions;
 
-    // 菜单过滤
+    // 菜单过滤 - 支持 menu_ids 数组
     if (selectedMenuId !== null) {
-      filtered = filtered.filter(p => p.menu_id === selectedMenuId);
+      filtered = filtered.filter(p => {
+        // 兼容新旧格式
+        if (p.menu_ids && Array.isArray(p.menu_ids)) {
+          return p.menu_ids.includes(selectedMenuId);
+        }
+        return p.menu_id === selectedMenuId;
+      });
     }
 
     setFilteredPermissions(filtered);
@@ -162,8 +174,9 @@ const PermissionItemManagement = () => {
 
   const handleAdd = () => {
     form.resetFields();
+    // 如果当前选择了某个菜单，默认关联到该菜单
     if (selectedMenuId) {
-      form.setFieldsValue({ menu_id: selectedMenuId });
+      form.setFieldsValue({ menu_ids: [selectedMenuId] });
     }
     setEditingId(null);
     setEnableDynamicParams(false);
@@ -179,9 +192,13 @@ const PermissionItemManagement = () => {
   const handleEdit = (record: PermissionItem) => {
     const hasDynamicParams = !!record.dynamic_params && Object.keys(record.dynamic_params).length > 0;
     
+    // 兼容新旧格式：优先使用 menu_ids，如果没有则使用 menu_id
+    const menuIds = record.menu_ids || (record.menu_id ? [record.menu_id] : []);
+    
     // 转换 dynamic_params 对象为数组格式
     const formValues = {
       ...record,
+      menu_ids: menuIds,
       dynamic_params: hasDynamicParams
         ? Object.entries(record.dynamic_params!).map(([key, value]) => ({ key, value }))
         : undefined,
@@ -191,6 +208,31 @@ const PermissionItemManagement = () => {
     setEditingId(record.id || null);
     setEnableDynamicParams(hasDynamicParams);
     setIsModalVisible(true);
+  };
+
+  const handleCopy = (record: PermissionItem) => {
+    const hasDynamicParams = !!record.dynamic_params && Object.keys(record.dynamic_params).length > 0;
+    
+    // 兼容新旧格式：优先使用 menu_ids，如果没有则使用 menu_id
+    const menuIds = record.menu_ids || (record.menu_id ? [record.menu_id] : []);
+    
+    // 转换 dynamic_params 对象为数组格式，复制时不包含 id
+    const formValues = {
+      code: record.code,
+      name: `${record.name} - 副本`,  // 添加"副本"后缀以区分
+      action: record.action,
+      menu_ids: menuIds,
+      description: record.description,
+      dynamic_params: hasDynamicParams
+        ? Object.entries(record.dynamic_params!).map(([key, value]) => ({ key, value }))
+        : undefined,
+    };
+    
+    form.setFieldsValue(formValues);
+    setEditingId(null);  // 设置为null表示这是新增操作
+    setEnableDynamicParams(hasDynamicParams);
+    setIsModalVisible(true);
+    message.info('已复制权限项数据，请修改后保存');
   };
 
   const handleDelete = async (id: string) => {
@@ -296,7 +338,13 @@ const PermissionItemManagement = () => {
 
   const convertMenuToTreeData = (items: MenuItem[]): DataNode[] => {
     return items.map(item => {
-      const permissionCount = permissions.filter(p => p.menu_id === item.id).length;
+      // 兼容新旧格式统计权限数量
+      const permissionCount = permissions.filter(p => {
+        if (p.menu_ids && Array.isArray(p.menu_ids)) {
+          return p.menu_ids.includes(item.id);
+        }
+        return p.menu_id === item.id;
+      }).length;
       
       return {
         title: (
@@ -349,18 +397,46 @@ const PermissionItemManagement = () => {
       width: 150,
     },
     {
-      title: '资源',
-      dataIndex: 'resource',
-      key: 'resource',
-      width: 120,
-      render: (resource: string) => <Tag color="blue">{resource}</Tag>,
-    },
-    {
       title: '操作',
       dataIndex: 'action',
       key: 'action',
       width: 120,
-      render: (action: string) => <Tag color="cyan">{action}</Tag>,
+      render: (action: string) => {
+        const colorMap: Record<string, string> = {
+          read: 'green',
+          create: 'blue',
+          update: 'orange',
+          delete: 'red'
+        };
+        return <Tag color={colorMap[action] || 'cyan'}>{action}</Tag>;
+      },
+    },
+    {
+      title: '关联菜单',
+      dataIndex: 'menu_ids',
+      key: 'menu_ids',
+      width: 200,
+      render: (menu_ids: string[] | undefined, record: PermissionItem) => {
+        // 兼容新旧格式
+        const menuIdList = menu_ids || (record.menu_id ? [record.menu_id] : []);
+        
+        if (!menuIdList || menuIdList.length === 0) {
+          return <span className="text-gray-400">未关联</span>;
+        }
+        
+        return (
+          <div className="flex flex-wrap gap-1">
+            {menuIdList.map(menuId => {
+              const menuItem = findMenuItem(menuData, menuId);
+              return menuItem ? (
+                <Tag key={menuId} color="blue">{menuItem.name}</Tag>
+              ) : (
+                <Tag key={menuId} color="default">未知菜单</Tag>
+              );
+            })}
+          </div>
+        );
+      },
     },
     {
       title: '描述',
@@ -371,35 +447,51 @@ const PermissionItemManagement = () => {
     {
       title: '操作',
       key: 'actions',
-      width: 150,
+      width: 80,
       fixed: 'right',
-      render: (_, record) => (
-        <Space>
-          <Button
-            type="link"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-          >
-            编辑
-          </Button>
-          <Popconfirm
-            title="确定删除该权限项吗？"
-            onConfirm={() => handleDelete(record.id!)}
-            okText="确定"
-            cancelText="取消"
-          >
-            <Button
-              type="link"
-              size="small"
-              danger
-              icon={<DeleteOutlined />}
-            >
-              删除
+      render: (_, record) => {
+        const menuItems: MenuProps['items'] = [
+          {
+            key: 'edit',
+            label: '编辑',
+            icon: <EditOutlined />,
+            onClick: () => handleEdit(record),
+          },
+          {
+            key: 'copy',
+            label: '复制',
+            icon: <CopyOutlined />,
+            onClick: () => handleCopy(record),
+          },
+          {
+            type: 'divider',
+          },
+          {
+            key: 'delete',
+            label: '删除',
+            icon: <DeleteOutlined />,
+            danger: true,
+            onClick: () => {
+              Modal.confirm({
+                title: '确定删除该权限项吗？',
+                content: '此操作无法撤销',
+                okText: '确定',
+                cancelText: '取消',
+                okType: 'danger',
+                onOk: () => handleDelete(record.id!),
+              });
+            },
+          },
+        ];
+
+        return (
+          <Dropdown menu={{ items: menuItems }} trigger={['click','hover']}>
+            <Button type="link" size="small" icon={<EllipsisOutlined />}>
+              
             </Button>
-          </Popconfirm>
-        </Space>
-      ),
+          </Dropdown>
+        );
+      },
     },
   ];
 
@@ -407,9 +499,15 @@ const PermissionItemManagement = () => {
     const values = searchForm.getFieldsValue();
     let filtered = permissions;
 
-    // 菜单过滤
+    // 菜单过滤 - 支持 menu_ids 数组
     if (selectedMenuId !== null) {
-      filtered = filtered.filter(p => p.menu_id === selectedMenuId);
+      filtered = filtered.filter(p => {
+        // 兼容新旧格式
+        if (p.menu_ids && Array.isArray(p.menu_ids)) {
+          return p.menu_ids.includes(selectedMenuId);
+        }
+        return p.menu_id === selectedMenuId;
+      });
     }
 
     // 高级搜索过滤
@@ -422,9 +520,6 @@ const PermissionItemManagement = () => {
       filtered = filtered.filter(p => 
         p.name?.toLowerCase().includes(values.name.toLowerCase())
       );
-    }
-    if (values.resource) {
-      filtered = filtered.filter(p => p.resource === values.resource);
     }
     if (values.action) {
       filtered = filtered.filter(p => p.action === values.action);
@@ -563,29 +658,16 @@ const PermissionItemManagement = () => {
                     </Form.Item>
                   </Col>
                   <Col span={6}>
-                    <Form.Item name="resource" label="资源">
-                      <Select
-                        allowClear
-                        showSearch
-                        placeholder="请选择资源"
-                        options={resourceOptions.map(r => ({
-                          label: r,
-                          value: r
-                        }))}
-                      />
-                    </Form.Item>
-                  </Col>
-                  <Col span={6}>
                     <Form.Item name="action" label="操作">
                       <Select
                         allowClear
-                        showSearch
                         placeholder="请选择操作"
-                        options={actionOptions.map(a => ({
-                          label: a,
-                          value: a
-                        }))}
-                      />
+                      >
+                        <Select.Option value="read">读取</Select.Option>
+                        <Select.Option value="create">创建</Select.Option>
+                        <Select.Option value="update">更新</Select.Option>
+                        <Select.Option value="delete">删除</Select.Option>
+                      </Select>
                     </Form.Item>
                   </Col>
                 </Row>
@@ -656,31 +738,30 @@ const PermissionItemManagement = () => {
             <Input placeholder="删除用户" />
           </Form.Item>
 
-          <div className="grid grid-cols-2 gap-4">
-            <Form.Item
-              name="resource"
-              label="资源"
-              rules={[{ required: true, message: '请输入资源' }]}
-              extra="会根据权限代码自动填充"
-            >
-              <Input placeholder="user" />
-            </Form.Item>
+          <Form.Item
+            name="action"
+            label="操作"
+            rules={[{ required: true, message: '请选择操作' }]}
+          >
+            <Select placeholder="选择操作类型">
+              <Select.Option value="read">读取 (read)</Select.Option>
+              <Select.Option value="create">创建 (create)</Select.Option>
+              <Select.Option value="update">更新 (update)</Select.Option>
+              <Select.Option value="delete">删除 (delete)</Select.Option>
+            </Select>
+          </Form.Item>
 
-            <Form.Item
-              name="action"
-              label="操作"
-              rules={[{ required: true, message: '请输入操作' }]}
-              extra="会根据权限代码自动填充"
-            >
-              <Input placeholder="delete" />
-            </Form.Item>
-          </div>
-
-          <Form.Item name="menu_id" label="关联菜单（可选）">
+          <Form.Item 
+            name="menu_ids" 
+            label="关联菜单（可选）"
+            extra="可以选择多个菜单进行分组展示"
+          >
             <Select
+              mode="multiple"
               placeholder="选择菜单用于分组展示"
               allowClear
               options={flattenMenus(menuData)}
+              maxTagCount="responsive"
             />
           </Form.Item>
 
