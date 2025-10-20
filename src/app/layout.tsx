@@ -2,8 +2,8 @@
 
 import React, { ReactNode, useEffect, useState, Suspense } from 'react';
 import { ConfigProvider, Dropdown, Menu, Tabs, Spin, Avatar, Button } from 'antd';
-import { Provider, useDispatch } from 'react-redux';
-import { store } from '../store/store';
+import { Provider, useDispatch, useSelector } from 'react-redux';
+import { store, RootState } from '../store/store';
 import '../styles/globals.css';
 import { SmileOutlined, HeartOutlined, UploadOutlined, UserOutlined, InfoCircleFilled, QuestionCircleFilled, GithubFilled, TeamOutlined, DownloadOutlined, ReloadOutlined } from '@ant-design/icons';
 import dynamic from 'next/dynamic';
@@ -13,16 +13,21 @@ import  { jwtDecode, JwtPayload } from 'jwt-decode';
 
 import axiosInstance from '@/utils/axiosInstance';
 import { setUser as updateUser } from '@/store/userSlice';
+import {
+  setMenuTree,
+  setPermissionItems,
+  setApiEndpoints,
+  setLoading,
+  setInitialized,
+  resetMenu,
+  type MenuTreeItem,
+  type PermissionItem,
+  type ApiEndpoint
+} from '@/store/menuSlice';
 
 const server_url = process.env.NEXT_PUBLIC_BACKEND_URL;
 
-interface MenuTreeItem {
-  id: string;
-  name: string;
-  parent_id: string | null;
-  children: MenuTreeItem[] | null;
-  path: string;
-}
+// MenuTreeItem 现在从 menuSlice 导入
 
 interface DecodedToken {
   exp: number;
@@ -31,6 +36,8 @@ interface DecodedToken {
   permissions: [string, string, string, string][];
   menu_ids: string[];
 }
+
+// PermissionItem 和 ApiEndpoint 现在从 menuSlice 导入
 
 interface User {
   username: string;
@@ -128,73 +135,281 @@ const AppContent = ({ children }: { children: ReactNode }) => {
     ),
 });
 
-  const [filteredMenuData, setFilteredMenuData] = useState<any[]>([]);
-  const [menuTree, setMenuTree] = useState<MenuTreeItem[]>([]);
+  // 从 Redux store 获取菜单相关状态
+  const menuState = useSelector((state: RootState) => state.menu);
+  const {
+    menuTree,        // 用户有权限的完整菜单树（所有级别）
+    permissionItems,
+    apiEndpoints,
+    isLoading,
+    isInitialized
+  } = menuState;
+  
+  // 局部状态：用于侧边栏显示的菜单数据（1-2级）
+  const [sidebarMenuData, setSidebarMenuData] = useState<any[]>([]);
 
-  // 添加一个 state 来追踪是否已经获取过菜单
-  const [menuFetched, setMenuFetched] = useState(false);
-
-  // 获取菜单树
-  const fetchMenuTree = async () => {
+  // 获取完整菜单树（所有菜单项）
+  const fetchAllMenus = async () => {
     try {
-      
       const response = await axiosInstance.get(`${server_url}/menu`);
-      if (response.data) {
-        setMenuTree(response.data);
-      }
+      return response.data || [];
     } catch (error) {
       console.error('获取菜单失败:', error);
+      return [];
     }
   };
 
-  // 将菜单树转换为 ProLayout 需要的格式
-  const convertMenuTree = (menuItems: MenuTreeItem[], allowedMenuIds: string[]): any[] => {
-    // 检查是否有通配符权限
-    const hasWildcardAccess = allowedMenuIds.includes("*");
-    
-    return menuItems
-      .filter(item => hasWildcardAccess || allowedMenuIds.includes(item.id))
-      .map(item => {
-        const menuItem = {
-          path: item.path,
-          name: item.name, 
-          icon: getIconByName(item.name),
-          children: item.children ? item.children
-            .filter(child => hasWildcardAccess || allowedMenuIds.includes(child.id))
-            .map(child => ({
-              path: child.path,
-              name: child.name,
-              icon: getIconByName(child.name)
-            })) : undefined
-        };
+  // 获取权限项数据
+  const fetchPermissionItems = async () => {
+    try {
+      const response = await axiosInstance.get(`${server_url}/permission_item`);
+      dispatch(setPermissionItems(response.data || []));
+    } catch (error) {
+      console.error('获取权限项失败:', error);
+    }
+  };
 
-        // 如果没有子项，则移除 children 属性
-        if (menuItem.children && menuItem.children.length === 0) {
-          delete menuItem.children;
+  // 获取API端点数据
+  const fetchApiEndpoints = async () => {
+    try {
+      const response = await axiosInstance.get(`${server_url}/api_endpoints`);
+      const endpointsData = response.data;
+      const allEndpoints: ApiEndpoint[] = [];
+      Object.entries(endpointsData).forEach(([group, endpoints]) => {
+        (endpoints as ApiEndpoint[]).forEach(endpoint => {
+          allEndpoints.push(endpoint);
+        });
+      });
+      dispatch(setApiEndpoints(allEndpoints));
+    } catch (error) {
+      console.error('获取API端点失败:', error);
+    }
+  };
+
+  // 获取用户的角色列表
+  const fetchUserRoles = async (username: string): Promise<string[]> => {
+    try {
+      const g2Response = await axiosInstance.get(`${server_url}/casbin/policies`, {
+        params: { policy_type: 'g' }
+      });
+      const g2Policies = g2Response.data?.g_policies || [];
+      const userRoles = g2Policies
+        .filter((g: any) => g.user === username)
+        .map((g: any) => g.role);
+      return userRoles;
+    } catch (error) {
+      console.error('获取用户角色失败:', error);
+      return [];
+    }
+  };
+
+  // 根据用户权限计算允许访问的菜单ID列表
+  const calculateAllowedMenuIds = async (username: string, allMenus: MenuTreeItem[]): Promise<string[]> => {
+    try {
+      // 特殊处理：admin 用户拥有所有菜单访问权限
+      if (username === 'admin') {
+        const getAllMenuIds = (items: MenuTreeItem[]): string[] => {
+          let ids: string[] = [];
+          items.forEach(item => {
+            ids.push(item.id);
+            if (item.children && item.children.length > 0) {
+              ids = ids.concat(getAllMenuIds(item.children));
+            }
+          });
+          return ids;
+        };
+        return getAllMenuIds(allMenus);
+      }
+
+      // 获取用户的直接策略和角色
+      const [userPoliciesResponse, userRoles] = await Promise.all([
+        axiosInstance.get(`${server_url}/casbin/policies/get_user_policies`, {
+          params: { username }
+        }),
+        fetchUserRoles(username)
+      ]);
+
+      const directPolicies = userPoliciesResponse.data || [];
+      const allowDirectPolicies = directPolicies.filter((p: any) => p.eft === 'allow');
+
+      // 获取所有角色的策略
+      const rolePoliciesPromises = userRoles.map(roleName =>
+        axiosInstance.get(`${server_url}/casbin/policies/get_role_policies`, {
+          params: { role: roleName }
+        })
+      );
+      const rolePoliciesResponses = await Promise.allSettled(rolePoliciesPromises);
+      
+      let allRolePolicies: any[] = [];
+      rolePoliciesResponses.forEach(result => {
+        if (result.status === 'fulfilled') {
+          const policies = result.value.data || [];
+          allRolePolicies = allRolePolicies.concat(policies.filter((p: any) => p.eft === 'allow'));
+        }
+      });
+
+      // 合并直接策略和角色策略
+      const allPolicies = [...allowDirectPolicies, ...allRolePolicies];
+
+      // 提取父级策略（无 attrs）
+      const parentPolicies = allPolicies.filter((p: any) => {
+        const attrs = p.attrs || {};
+        return Object.keys(attrs).length === 0;
+      });
+
+      // 收集所有有权限的权限项ID
+      const permissionIdSet = new Set<string>();
+
+      permissionItems.forEach(perm => {
+        const apiEndpoint = apiEndpoints.find(api => api.id === perm.code);
+        if (!apiEndpoint) return;
+
+        // 检查是否有完全匹配的策略
+        const exactMatch = allPolicies.find((p: any) => {
+          if (apiEndpoint.Path !== p.obj || apiEndpoint.Method !== p.act) {
+            return false;
+          }
+          const policyAttrs = p.attrs || {};
+          const permAttrs = perm.dynamic_params || {};
+          return JSON.stringify(policyAttrs) === JSON.stringify(permAttrs);
+        });
+
+        if (exactMatch) {
+          permissionIdSet.add(perm.id);
+          return;
         }
 
-        return menuItem;
+        // 检查是否有父级权限
+        const permAttrs = perm.dynamic_params || {};
+        if (Object.keys(permAttrs).length > 0) {
+          const hasParentPolicy = parentPolicies.some((p: any) =>
+            apiEndpoint.Path === p.obj && apiEndpoint.Method === p.act
+          );
+
+          if (hasParentPolicy) {
+            permissionIdSet.add(perm.id);
+          }
+        }
       });
+
+      // 从有权限的权限项中提取 menu_ids
+      const menuIdSet = new Set<string>();
+      permissionItems.forEach(perm => {
+        if (permissionIdSet.has(perm.id)) {
+          const menuIdList = perm.menu_ids || (perm.menu_id ? [perm.menu_id] : []);
+          menuIdList.forEach(menuId => menuIdSet.add(menuId));
+        }
+      });
+
+      // 添加所有父菜单ID（确保有子菜单权限时，父菜单也显示）
+      const addParentMenuIds = (menuId: string) => {
+        const findParent = (id: string, items: MenuTreeItem[]): string | null => {
+          for (const item of items) {
+            if (item.id === id && item.parent_id) {
+              return item.parent_id;
+            }
+            if (item.children) {
+              const found = findParent(id, item.children);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+
+        let currentId: string | null = menuId;
+        while (currentId) {
+          const parentId = findParent(currentId, allMenus);
+          if (parentId) {
+            menuIdSet.add(parentId);
+            currentId = parentId;
+          } else {
+            break;
+          }
+        }
+      };
+
+      Array.from(menuIdSet).forEach(addParentMenuIds);
+
+      return Array.from(menuIdSet);
+    } catch (error) {
+      console.error('计算允许的菜单ID失败:', error);
+      return [];
+    }
+  };
+
+  // 根据用户权限过滤菜单树（保留所有级别）
+  const filterMenuTreeByPermission = (menuItems: MenuTreeItem[], allowedMenuIds: string[]): MenuTreeItem[] => {
+    const hasWildcardAccess = allowedMenuIds.includes("*");
+    
+    const filterItems = (items: MenuTreeItem[]): MenuTreeItem[] => {
+      return items
+        .filter(item => hasWildcardAccess || allowedMenuIds.includes(item.id))
+        .map(item => {
+          const filtered: MenuTreeItem = { ...item };
+          
+          if (item.children && item.children.length > 0) {
+            const filteredChildren = filterItems(item.children);
+            filtered.children = filteredChildren.length > 0 ? filteredChildren : null;
+          }
+          
+          return filtered;
+        });
+    };
+    
+    return filterItems(menuItems);
+  };
+  
+  // 为侧边栏转换菜单树（只显示 1-2 级，3 级作为 tab）
+  const convertMenuTreeForSidebar = (menuItems: MenuTreeItem[], depth: number = 0): any[] => {
+    return menuItems.map(item => {
+      const menuItem: any = {
+        path: item.path,
+        name: item.name,
+        icon: getIconByName(getIconNameByMenuName(item.name)),
+      };
+
+      // 只处理到第 2 层
+      if (item.children && item.children.length > 0 && depth < 1) {
+        const children = convertMenuTreeForSidebar(item.children, depth + 1);
+        if (children.length > 0) {
+          menuItem.children = children;
+        }
+      }
+
+      return menuItem;
+    });
   };
 
   // 根据名称获取路径
 
 
-  // 根据名称获取图标
-  const getIconByName = (name: string): React.ReactNode => {
-    const iconMap: { [key: string]: React.ReactNode } = {
-      'Section': <HeartOutlined />,
-      '用户管理': <TeamOutlined />,
-      '文件制作-管理员': <HeartOutlined />,
-      '文件制作-用户': <UploadOutlined />,
+  // 根据名称获取图标名称（存储到 Redux）
+  const getIconNameByMenuName = (name: string): string => {
+    const iconMap: { [key: string]: string } = {
+      'Section': 'HeartOutlined',
+      '用户管理': 'TeamOutlined',
+      '文件制作-管理员': 'HeartOutlined',
+      '文件制作-用户': 'UploadOutlined',
       // ... 添加其他图标映射
     };
-    return iconMap[name] || <SmileOutlined />;
+    return iconMap[name] || 'SmileOutlined';
+  };
+
+  // 根据图标名称获取 React 元素（渲染时使用）
+  const getIconByName = (iconName?: string): React.ReactNode => {
+    const iconMap: { [key: string]: React.ReactNode } = {
+      'HeartOutlined': <HeartOutlined />,
+      'TeamOutlined': <TeamOutlined />,
+      'UploadOutlined': <UploadOutlined />,
+      'SmileOutlined': <SmileOutlined />,
+      // ... 添加其他图标
+    };
+    return iconMap[iconName || 'SmileOutlined'] || <SmileOutlined />;
   };
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
-    if (storedUser && !menuFetched) {  // 只在未获取过菜单时执行
+    if (storedUser && !isInitialized) {
       try {
         const parsedUser: User = JSON.parse(storedUser);
         const { accessToken } = parsedUser;
@@ -208,20 +423,21 @@ const AppContent = ({ children }: { children: ReactNode }) => {
         } else {
           dispatch(updateUser(parsedUser.username));
           setUser(parsedUser);
-          // 获取菜单树并转换
-          fetchMenuTree().then(() => {
-            if (decodedToken.menu_ids) {
-              const convertedMenu = convertMenuTree(menuTree, decodedToken.menu_ids);
-              setFilteredMenuData([
-                {
-                  path: '/',
-                  name: 'Home',
-                  icon: <SmileOutlined />
-                },
-                ...convertedMenu
-              ]);
-              setMenuFetched(true);  // 标记菜单已获取
-            }
+          dispatch(setLoading(true));
+          
+          // 并行获取所有需要的数据
+          Promise.all([
+            fetchAllMenus(),
+            fetchPermissionItems(),
+            fetchApiEndpoints()
+          ]).then(([allMenus]) => {
+            // allMenus 是完整的菜单树，需要根据用户权限过滤
+            // 过滤逻辑在下面的 useEffect 中处理
+            dispatch(setInitialized(true));
+            dispatch(setLoading(false));
+          }).catch(error => {
+            console.error('获取初始数据失败:', error);
+            dispatch(setLoading(false));
           });
         }
       } catch (error) {
@@ -234,29 +450,48 @@ const AppContent = ({ children }: { children: ReactNode }) => {
     } else if (!storedUser && pathname !== '/login') {
       router.push('/login');
     }
-  }, [pathname, router]);  // 移除 menuTree 依赖
+  }, [pathname, router, isInitialized]);
 
-  // 添加单独的 effect 来处理菜单转换
+  // 当所有数据加载完成后，根据用户权限过滤并存储菜单树
   useEffect(() => {
-    if (menuTree.length > 0 && user) {
+    const buildMenu = async () => {
+      if (!isInitialized || !user || permissionItems.length === 0 || apiEndpoints.length === 0) {
+        return;
+      }
+      
       try {
         const decodedToken: DecodedToken = jwtDecode(user.accessToken);
-        if (decodedToken.menu_ids) {
-          const convertedMenu = convertMenuTree(menuTree, decodedToken.menu_ids);
-          setFilteredMenuData([
-            {
-              path: '/',
-              name: 'Home',
-              icon: <SmileOutlined />
-            },
-            ...convertedMenu
-          ]);
-        }
+        const username = decodedToken.sub;
+        
+        // 获取完整菜单树
+        const allMenus = await fetchAllMenus();
+        
+        // 计算允许访问的菜单ID
+        const allowedMenuIds = await calculateAllowedMenuIds(username, allMenus);
+        
+        // 根据权限过滤菜单树（保留所有级别）
+        const filteredTree = filterMenuTreeByPermission(allMenus, allowedMenuIds);
+        
+        // 存储到 Redux（完整的树结构）
+        dispatch(setMenuTree(filteredTree));
+        
+        // 为侧边栏转换（只显示 1-2 级）
+        const sidebarMenu = convertMenuTreeForSidebar(filteredTree);
+        setSidebarMenuData([
+          {
+            path: '/',
+            name: 'Home',
+            icon: getIconByName('SmileOutlined')
+          },
+          ...sidebarMenu
+        ]);
       } catch (error) {
-        console.error('Error converting menu:', error);
+        console.error('构建菜单失败:', error);
       }
-    }
-  }, [menuTree]);
+    };
+
+    buildMenu();
+  }, [isInitialized, user, permissionItems, apiEndpoints]);
   
 
  
@@ -288,9 +523,8 @@ const AppContent = ({ children }: { children: ReactNode }) => {
           </PageContainer>
       ),
     });
-    setFilteredMenuData([]);
-    setMenuTree([]);
-    setMenuFetched(false);
+    // 重置菜单状态
+    dispatch(resetMenu());
     router.push('/login');
   };
 
@@ -367,9 +601,10 @@ const AppContent = ({ children }: { children: ReactNode }) => {
   };
 
   const menuItemRender = (item: any, dom: any) => (
-
     <div onClick={() => addTab(item.name, item.path)}>{dom}</div>
   );
+
+
 
   const isLoginPage = pathname === '/login';
 
@@ -392,7 +627,7 @@ const AppContent = ({ children }: { children: ReactNode }) => {
                     pathname: pathname,
                   }}
                   menuItemRender={menuItemRender}
-                  menuDataRender={() => filteredMenuData}
+                  menuDataRender={() => sidebarMenuData}
                   avatarProps={{
                     src: "https://avatars1.githubusercontent.com/u/8186664?s=460&v=4",
                     size: "large",

@@ -38,7 +38,8 @@ interface PermissionItem {
   name: string;
   resource: string;
   action: string;
-  menu_id?: string;
+  menu_id?: string;  // 保留用于向后兼容
+  menu_ids?: string[];  // 新增：支持多个菜单
   description?: string;
   dynamic_params?: Record<string, string>;
 }
@@ -353,16 +354,22 @@ const UserManagement: React.FC = () => {
 
   // 构建权限树 - 按照完整的菜单层级结构组织
   const buildPermissionTree = (permissions: PermissionItem[], directPermissions: string[], inheritedPermissions: string[]): PermissionTreeNode[] => {
-    // 按 menu_id 分组权限项
+    // 按 menu_id 或 menu_ids 分组权限项
     const permissionsByMenu = new Map<string, PermissionItem[]>();
     const noMenuPermissions: PermissionItem[] = [];
     
     permissions.forEach(p => {
-      if (p.menu_id) {
-        if (!permissionsByMenu.has(p.menu_id)) {
-          permissionsByMenu.set(p.menu_id, []);
-        }
-        permissionsByMenu.get(p.menu_id)!.push(p);
+      // 支持新旧格式：优先使用 menu_ids，如果没有则使用 menu_id
+      const menuIdList = p.menu_ids || (p.menu_id ? [p.menu_id] : []);
+      
+      if (menuIdList.length > 0) {
+        // 一个权限项可能关联多个菜单，需要将其添加到每个菜单的分组中
+        menuIdList.forEach(menuId => {
+          if (!permissionsByMenu.has(menuId)) {
+            permissionsByMenu.set(menuId, []);
+          }
+          permissionsByMenu.get(menuId)!.push(p);
+        });
       } else {
         noMenuPermissions.push(p);
       }
@@ -468,19 +475,47 @@ const UserManagement: React.FC = () => {
             params: { role: roleName }
           });
           const rolePolicies = rolePoliciesResponse.data || [];
-          // 只统计 allow 的策略
-          rolePolicies
-            .filter((p: any) => p.eft === 'allow')
-            .forEach((p: any) => {
-              // 通过 obj(路径) 和 act(方法) 查找对应的权限项
-              const matchedPermission = permissionData.find((perm: PermissionItem) => {
-                const apiEndpoint = apiEndpoints.find(api => api.id === perm.code);
-                return apiEndpoint && apiEndpoint.Path === p.obj && apiEndpoint.Method === p.act;
-              });
-              if (matchedPermission) {
-                inheritedPermissionSet.add(matchedPermission.id);
+          const allowPolicies = rolePolicies.filter((p: any) => p.eft === 'allow');
+          
+          // 检查是否有父级权限（无 attrs 的策略）
+          const parentPolicies = allowPolicies.filter((p: any) => {
+            const attrs = p.attrs || {};
+            return Object.keys(attrs).length === 0;
+          });
+          
+          // 遍历所有权限项
+          permissionData.forEach((perm: PermissionItem) => {
+            const apiEndpoint = apiEndpoints.find(api => api.id === perm.code);
+            if (!apiEndpoint) return;
+            
+            // 检查是否有完全匹配的策略（包括 attrs）
+            const exactMatch = allowPolicies.find((p: any) => {
+              if (apiEndpoint.Path !== p.obj || apiEndpoint.Method !== p.act) {
+                return false;
               }
+              const policyAttrs = p.attrs || {};
+              const permAttrs = perm.dynamic_params || {};
+              return JSON.stringify(policyAttrs) === JSON.stringify(permAttrs);
             });
+            
+            if (exactMatch) {
+              inheritedPermissionSet.add(perm.id);
+              return;
+            }
+            
+            // 如果没有完全匹配，检查是否有父级权限
+            const permAttrs = perm.dynamic_params || {};
+            if (Object.keys(permAttrs).length > 0) {
+              // 当前权限项有动态参数（是子集权限），检查是否有对应的父级策略
+              const hasParentPolicy = parentPolicies.some((p: any) => 
+                apiEndpoint.Path === p.obj && apiEndpoint.Method === p.act
+              );
+              
+              if (hasParentPolicy) {
+                inheritedPermissionSet.add(perm.id);
+              }
+            }
+          });
         } catch (error) {
           console.warn(`获取角色 ${roleName} 的权限失败:`, error);
         }
@@ -488,20 +523,47 @@ const UserManagement: React.FC = () => {
       
       // 将用户的直接策略转换为权限项ID
       const userDirectPermissionIds: string[] = [];
-      for (const policy of directPolicies) {
-        const obj = policy.obj; // 对象属性：资源路径
-        const act = policy.act; // 对象属性：操作方法
+      const allowDirectPolicies = directPolicies.filter((p: any) => p.eft === 'allow');
+      
+      // 检查是否有父级权限（无 attrs 的策略）
+      const parentDirectPolicies = allowDirectPolicies.filter((p: any) => {
+        const attrs = p.attrs || {};
+        return Object.keys(attrs).length === 0;
+      });
+      
+      // 遍历所有权限项
+      permissionData.forEach((perm: PermissionItem) => {
+        const apiEndpoint = apiEndpoints.find(api => api.id === perm.code);
+        if (!apiEndpoint) return;
         
-        // 通过路径和方法查找对应的权限项
-        const matchedPermission = permissionData.find((perm: PermissionItem) => {
-          const apiEndpoint = apiEndpoints.find(api => api.id === perm.code);
-          return apiEndpoint && apiEndpoint.Path === obj && apiEndpoint.Method === act;
+        // 检查是否有完全匹配的策略（包括 attrs）
+        const exactMatch = allowDirectPolicies.find((p: any) => {
+          if (apiEndpoint.Path !== p.obj || apiEndpoint.Method !== p.act) {
+            return false;
+          }
+          const policyAttrs = p.attrs || {};
+          const permAttrs = perm.dynamic_params || {};
+          return JSON.stringify(policyAttrs) === JSON.stringify(permAttrs);
         });
         
-        if (matchedPermission) {
-          userDirectPermissionIds.push(matchedPermission.id);
+        if (exactMatch) {
+          userDirectPermissionIds.push(perm.id);
+          return;
         }
-      }
+        
+        // 如果没有完全匹配，检查是否有父级权限
+        const permAttrs = perm.dynamic_params || {};
+        if (Object.keys(permAttrs).length > 0) {
+          // 当前权限项有动态参数（是子集权限），检查是否有对应的父级策略
+          const hasParentPolicy = parentDirectPolicies.some((p: any) => 
+            apiEndpoint.Path === p.obj && apiEndpoint.Method === p.act
+          );
+          
+          if (hasParentPolicy) {
+            userDirectPermissionIds.push(perm.id);
+          }
+        }
+      });
       
       setCheckedPermissionKeys(userDirectPermissionIds);
       setInheritedPermissionKeys(Array.from(inheritedPermissionSet));

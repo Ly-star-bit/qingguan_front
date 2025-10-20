@@ -1,8 +1,8 @@
-"use client"; // 添加这个指令
+"use client";
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSelector, useDispatch } from 'react-redux';
+import { useSelector } from 'react-redux';
 import { RootState, useAppDispatch } from '@/store/store';
 import { setUser as updateUser } from '@/store/userSlice';
 interface User {
@@ -12,33 +12,42 @@ interface User {
   role: string;
 }
 const Home = () => {
-  // const router = useRouter();
-  const userName = useSelector((state: RootState) => state.user.name);
-
-  // 使用 useAppDispatch 获取 dispatch 函数
   const dispatch = useAppDispatch();
-  // useEffect(() => {
-  //   router.push('/vba');
-  // }, [router]);
-  useEffect(() =>{
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
+  const userName = useSelector((state: RootState) => state.user.name);
+  const menuState = useSelector((state: RootState) => state.menu);
 
-        const parsedUser: User = JSON.parse(storedUser);
-        if(parsedUser){
-          console.log(parsedUser)
-          dispatch(updateUser(parsedUser.username))
-
-        }
-
-  }
-  })
-    // 监听 userName 变化
+  // 监听用户名和菜单状态变化
   useEffect(() => {
-      console.log('userName updated:', userName);
-    }, [userName]);
+    console.log('User:', userName);
+    console.log('Menu Tree:', menuState.menuTree);
+    console.log('Menu initialized:', menuState.isInitialized);
+  }, [userName, menuState]);
 
-  return null;
+  // 递归计算菜单项总数
+  const countMenuItems = (items: any[]): number => {
+    return items.reduce((count, item) => {
+      let total = 1; // 当前项
+      if (item.children && item.children.length > 0) {
+        total += countMenuItems(item.children);
+      }
+      return count + total;
+    }, 0);
+  };
+
+  return (
+    <div className="p-8">
+      <h1 className="text-2xl font-bold mb-4">欢迎</h1>
+      {userName && <p>当前用户: {userName}</p>}
+      {menuState.isInitialized && menuState.menuTree.length > 0 && (
+        <div className="mt-4">
+          <p>用户菜单树已加载</p>
+          <p>一级菜单: {menuState.menuTree.length} 个</p>
+          <p>总菜单项: {countMenuItems(menuState.menuTree)} 个（包含所有层级）</p>
+        </div>
+      )}
+      {menuState.isLoading && <p>加载中...</p>}
+    </div>
+  );
 };
 
 export default Home;

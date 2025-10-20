@@ -153,7 +153,7 @@ const Vba: React.FC = () => {
                     </div>
                 </TabPane>
 
-                <TabPane tab="执行空运new" key="execute_air_new">
+                <TabPane tab="清关文件生成" key="qingguan_pdf_generate">
                     <ExecuteAirNew />
                 </TabPane>
             </>
