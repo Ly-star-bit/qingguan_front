@@ -14,12 +14,24 @@ interface PackingType {
   country: string;
 }
 
+interface ConsigneeData {
+  id: number;
+  中文: string;
+  发货人: string;
+  发货人详细地址: string;
+  类型: string;
+  关税类型: string;
+  备注: string;
+  hide: string;
+}
+
 const server_url = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8085";
 
 const PackingTypeTable: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [isModalVisible, setIsModalVisible] = useState<boolean>(false);
   const [currentPackingType, setCurrentPackingType] = useState<PackingType | null>(null);
+  const [consignees, setConsignees] = useState<ConsigneeData[]>([]);
   const [form] = Form.useForm();
   const actionRef = useRef<ActionType>();
 
@@ -41,6 +53,19 @@ const PackingTypeTable: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const fetchConsignees = async () => {
+    try {
+      const response = await axiosInstance.get(`${server_url}/qingguan/consignee/`);
+      setConsignees(response.data.items);
+    } catch (error) {
+      message.error('获取收发货人失败');
+    }
+  };
+
+  React.useEffect(() => {
+    fetchConsignees();
+  }, []);
 
 
 
@@ -239,16 +264,44 @@ const PackingTypeTable: React.FC = () => {
           <Form.Item
             name="sender_name"
             label="发件人"
-            rules={[{ required: true, message: '请输入发件人' }]}
+            rules={[{ required: true, message: '请选择发件人' }]}
           >
-            <Input />
+            <Select
+              showSearch
+              allowClear
+              placeholder="请选择或搜索发货人"
+              optionFilterProp="children"
+              filterOption={(input, option) =>
+                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+              options={consignees
+                .filter(c => c.类型 === '发货人')
+                .map(consignee => ({
+                  label: `${consignee.中文} - ${consignee.发货人}`,
+                  value: consignee.发货人
+                }))}
+            />
           </Form.Item>
           <Form.Item
             name="receiver_name"
             label="收件人"
-            rules={[{ required: true, message: '请输入收件人' }]}
+            rules={[{ required: true, message: '请选择收件人' }]}
           >
-            <Input />
+            <Select
+              showSearch
+              allowClear
+              placeholder="请选择或搜索收货人"
+              optionFilterProp="children"
+              filterOption={(input, option) =>
+                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+              options={consignees
+                .filter(c => c.类型 === '收货人')
+                .map(consignee => ({
+                  label: `${consignee.中文} - ${consignee.发货人}`,
+                  value: consignee.发货人
+                }))}
+            />
           </Form.Item>
           <Form.Item
             name="remarks"

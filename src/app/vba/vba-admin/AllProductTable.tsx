@@ -75,11 +75,29 @@ const AllProductTable: React.FC = () => {
     const [isUploading, setIsUploading] = useState(false);
     const [isUpdating, setIsUpdating] = useState(false);
     const [categories, setCategories] = useState<string[]>([]);
+    const [factories, setFactories] = useState<any[]>([]);
 
     const userName = useSelector((state: RootState) => state.user.name);
 
     const [searchForm] = Form.useForm();
     const [routeForm] = Form.useForm();
+
+    // 获取工厂列表
+    const fetchFactories = async () => {
+        try {
+            const response = await axiosInstance.get(`${server_url}/qingguan/factory/`);
+            const data = await response.data;
+            setFactories(data.items || []);
+        } catch (error) {
+            console.error('Failed to fetch factories:', error);
+            message.error('获取工厂列表失败');
+        }
+    };
+
+    // 在组件加载时获取工厂列表
+    useEffect(() => {
+        fetchFactories();
+    }, []);
 
     // 路线选择相关状态
     const [startland, setStartland] = useState<string>('');
@@ -138,10 +156,9 @@ const AllProductTable: React.FC = () => {
                 return newProducts;
             });
 
-            if (type === "海运") {
-                const uniqueCategories = Array.from(new Set(data.items.map((product: Product) => product.类别))).filter(Boolean) as string[];
-                setCategories(uniqueCategories);
-            }
+            // 获取类别数据（空运和海运都需要）
+            const uniqueCategories = Array.from(new Set(data.items.map((product: Product) => product.类别))).filter(Boolean) as string[];
+            setCategories(uniqueCategories);
 
             setLoadingProducts(false);
 
@@ -209,6 +226,8 @@ const AllProductTable: React.FC = () => {
             自税: values.自税,
             类型: values.类型,
             country: startland,
+            startland: startland,
+            destination: destination,
             other_rate: values.other_rate ?? "",
             加征0204: values.加征0204 ?? "",
             加征代码: values.加征代码 ?? ""
@@ -413,6 +432,9 @@ const AllProductTable: React.FC = () => {
 
             productForm.setFieldsValue({
                 ...record,
+                startland: startland,
+                destination: destination,
+                transport_type: transport_type,
                 更新时间: record.更新时间 ? moment(record.更新时间) : moment().startOf('day'),
                 加征: jiazhengArray,
                 single_weight_range: record.single_weight_range || {
@@ -427,6 +449,12 @@ const AllProductTable: React.FC = () => {
     const handleAdd = () => {
         setEditingProduct(null);
         productForm.resetFields();
+        // 设置默认值
+        productForm.setFieldsValue({
+            startland: startland,
+            destination: destination,
+            transport_type: transport_type
+        });
         setProductModalVisible(true);
     };
 
@@ -735,18 +763,16 @@ const AllProductTable: React.FC = () => {
                                         <Input placeholder="请输入豁免代码..." />
                                     </Form.Item>
                                 </Col>
-                                {transport_type === "海运" && (
-                                    <Col span={6}>
-                                        <Form.Item label="类别" name="category">
-                                            <Select
-                                                showSearch
-                                                allowClear
-                                                placeholder="请选择或输入类别"
-                                                options={categories.map(cat => ({ label: cat, value: cat }))}
-                                            />
-                                        </Form.Item>
-                                    </Col>
-                                )}
+                                <Col span={6}>
+                                    <Form.Item label="类别" name="category">
+                                        <Select
+                                            showSearch
+                                            allowClear
+                                            placeholder="请选择或输入类别"
+                                            options={categories.map(cat => ({ label: cat, value: cat }))}
+                                        />
+                                    </Form.Item>
+                                </Col>
                                 <Col span={6}>
                                     <Form.Item label="是否隐藏" name="isHidden">
                                         <Select allowClear placeholder="请选择显示状态">
@@ -856,6 +882,22 @@ const AllProductTable: React.FC = () => {
                     onFinish={handleProductSubmit}
                     layout="vertical"
                 >
+                    {/* 隐藏字段 */}
+                    <Form.Item name="startland" hidden>
+                        <Input />
+                    </Form.Item>
+                    <Form.Item name="destination" hidden>
+                        <Input />
+                    </Form.Item>
+                    <Form.Item name="transport_type" hidden>
+                        <Input />
+                    </Form.Item>
+
+                    {/* 显示当前路线信息 */}
+                    <div style={{ marginBottom: 16, padding: '8px 12px', background: '#f0f2f5', borderRadius: 4 }}>
+                        <strong>当前路线：</strong>{startland} → {destination} ({transport_type})
+                    </div>
+
                     <Row gutter={16}>
                         <Col span={12}>
                             <Form.Item label="中文品名" name="中文品名" rules={[{ required: true, message: '中文品名是必填项' }]}>
@@ -902,8 +944,20 @@ const AllProductTable: React.FC = () => {
                             </Form.Item>
                         </Col>
                         <Col span={12}>
-                            <Form.Item label="属性绑定工厂" name="属性绑定工厂">
-                                <Input />
+                            <Form.Item label="属性绑定工厂" name="属性绑定工厂" rules={[{ required: true, message: '工厂是必填项' }]}>
+                                <Select
+                                    showSearch
+                                    allowClear
+                                    placeholder="请选择或搜索工厂"
+                                    optionFilterProp="children"
+                                    filterOption={(input, option) =>
+                                        (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+                                    }
+                                    options={factories.map(factory => ({
+                                        label: `${factory.属性} - ${factory.中文名字}`,
+                                        value: factory.属性
+                                    }))}
+                                />
                             </Form.Item>
                         </Col>
                     </Row>
@@ -1004,7 +1058,7 @@ const AllProductTable: React.FC = () => {
 
                     <Row gutter={16}>
                         <Col span={12}>
-                            <Form.Item label="类别" name="类别">
+                            <Form.Item label="类别" name="类别" rules={[{ required: true, message: '类别是必填项' }]}>
                                 <Input />
                             </Form.Item>
                         </Col>

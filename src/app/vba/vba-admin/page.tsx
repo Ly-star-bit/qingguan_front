@@ -28,6 +28,7 @@ import axiosInstance from '@/utils/axiosInstance';
 import ProductDataVietnam from './productDataVietnam';
 import PackingTypeTable from './PackingTypeTable';
 import AllProductTable from './AllProductTable';
+import TariffManagement from './TariffManagement';
 const { TabPane } = Tabs;
 const { confirm } = Modal;
 
@@ -196,6 +197,9 @@ const Vba: React.FC = () => {
                     </TabPane>
                     <TabPane tab="海运自税" key="HaiyunZishui">
                         <HaiyunZishuiPage />
+                    </TabPane>
+                    <TabPane tab="加征关税管理" key="TariffManagement">
+                        <TariffManagement />
                     </TabPane>
                     <TabPane tab="ip白名单" key="ipwhitelist">
                         <IpWhiteListPage />
