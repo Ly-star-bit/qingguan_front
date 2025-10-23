@@ -19,6 +19,7 @@ import {
   Col,
   Switch,
   Dropdown,
+  Tooltip,
 } from 'antd';
 import type { MenuProps } from 'antd';
 import type { DataNode } from 'antd/es/tree';
@@ -37,6 +38,7 @@ import {
   CopyOutlined,
   MoreOutlined,
   EllipsisOutlined,
+  CodeOutlined,
 } from '@ant-design/icons';
 import type { MenuItem } from './menu';
 import { BulkAddPermissionsModal } from './BulkAddPermissionsModal';
@@ -79,6 +81,9 @@ const PermissionItemManagement = () => {
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   const [searchForm] = Form.useForm();
   const [enableDynamicParams, setEnableDynamicParams] = useState(false);
+  const [jsonEditorVisible, setJsonEditorVisible] = useState(false);
+  const [currentJsonField, setCurrentJsonField] = useState<{ fieldName: number; currentValue: string }>({ fieldName: 0, currentValue: '' });
+  const [jsonEditorContent, setJsonEditorContent] = useState('');
 
   const fetchMenuData = async () => {
     try {
@@ -821,6 +826,18 @@ const PermissionItemManagement = () => {
                       >
                         <Input placeholder="参数值（可选）" style={{ width: 200 }} />
                       </Form.Item>
+                      <Tooltip title="使用JSON编辑器">
+                        <Button
+                          type="text"
+                          icon={<CodeOutlined />}
+                          onClick={() => {
+                            const currentValue = form.getFieldValue(['dynamic_params', name, 'value']) || '';
+                            setCurrentJsonField({ fieldName: name, currentValue });
+                            setJsonEditorContent(currentValue);
+                            setJsonEditorVisible(true);
+                          }}
+                        />
+                      </Tooltip>
                       <MinusCircleOutlined
                         onClick={() => remove(name)}
                         style={{ color: '#ff4d4f', cursor: 'pointer' }}
@@ -850,6 +867,58 @@ const PermissionItemManagement = () => {
         menuData={menuData}
         onSubmit={handleBulkSubmit}
       />
+
+      {/* JSON Editor Modal */}
+      <Modal
+        title="JSON 编辑器"
+        open={jsonEditorVisible}
+        onOk={() => {
+          try {
+            // 验证JSON格式
+            if (jsonEditorContent.trim()) {
+              JSON.parse(jsonEditorContent);
+            }
+            // 更新表单字段值
+            form.setFieldValue(['dynamic_params', currentJsonField.fieldName, 'value'], jsonEditorContent);
+            setJsonEditorVisible(false);
+            message.success('JSON内容已更新');
+          } catch (error) {
+            message.error('无效的JSON格式，请检查语法');
+          }
+        }}
+        onCancel={() => {
+          setJsonEditorVisible(false);
+          setJsonEditorContent('');
+        }}
+        width={800}
+        okText="确定"
+        cancelText="取消"
+      >
+        <div className="mb-4">
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <CodeOutlined />
+              <span>在下方输入JSON格式的数据，支持对象和数组</span>
+            </div>
+            <div className="text-xs text-gray-500">
+              示例: {'{}'} 或 {'"value"'} 或 {'["item1", "item2"]'} 或 {'{\"key\": \"value\"}'}
+            </div>
+          </Space>
+        </div>
+        <Input.TextArea
+          value={jsonEditorContent}
+          onChange={(e) => setJsonEditorContent(e.target.value)}
+          placeholder="输入JSON内容..."
+          rows={12}
+          style={{
+            fontFamily: 'Monaco, Menlo, "Ubuntu Mono", Consolas, monospace',
+            fontSize: '13px',
+          }}
+        />
+        <div className="mt-2 text-xs text-gray-500">
+          提示：确保JSON格式正确，否则保存时会提示错误
+        </div>
+      </Modal>
     </div>
   );
 };

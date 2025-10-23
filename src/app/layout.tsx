@@ -15,14 +15,10 @@ import axiosInstance from '@/utils/axiosInstance';
 import { setUser as updateUser } from '@/store/userSlice';
 import {
   setMenuTree,
-  setPermissionItems,
-  setApiEndpoints,
   setLoading,
   setInitialized,
   resetMenu,
-  type MenuTreeItem,
-  type PermissionItem,
-  type ApiEndpoint
+  type MenuTreeItem
 } from '@/store/menuSlice';
 
 const server_url = process.env.NEXT_PUBLIC_BACKEND_URL;
@@ -139,8 +135,6 @@ const AppContent = ({ children }: { children: ReactNode }) => {
   const menuState = useSelector((state: RootState) => state.menu);
   const {
     menuTree,        // 用户有权限的完整菜单树（所有级别）
-    permissionItems,
-    apiEndpoints,
     isLoading,
     isInitialized
   } = menuState;
@@ -148,215 +142,17 @@ const AppContent = ({ children }: { children: ReactNode }) => {
   // 局部状态：用于侧边栏显示的菜单数据（1-2级）
   const [sidebarMenuData, setSidebarMenuData] = useState<any[]>([]);
 
-  // 获取完整菜单树（所有菜单项）
-  const fetchAllMenus = async () => {
+  // 获取用户的菜单权限（使用后端统一接口）
+  const fetchUserMenuPermissions = async (username: string) => {
     try {
-      const response = await axiosInstance.get(`${server_url}/menu`);
+      const response = await axiosInstance.get(`${server_url}/menu/user/get_user_menu_permissions`, {
+        params: { username }
+      });
       return response.data || [];
     } catch (error) {
-      console.error('获取菜单失败:', error);
+      console.error('获取用户菜单权限失败:', error);
       return [];
     }
-  };
-
-  // 获取权限项数据
-  const fetchPermissionItems = async () => {
-    try {
-      const response = await axiosInstance.get(`${server_url}/permission_item`);
-      dispatch(setPermissionItems(response.data || []));
-    } catch (error) {
-      console.error('获取权限项失败:', error);
-    }
-  };
-
-  // 获取API端点数据
-  const fetchApiEndpoints = async () => {
-    try {
-      const response = await axiosInstance.get(`${server_url}/api_endpoints`);
-      const endpointsData = response.data;
-      const allEndpoints: ApiEndpoint[] = [];
-      Object.entries(endpointsData).forEach(([group, endpoints]) => {
-        (endpoints as ApiEndpoint[]).forEach(endpoint => {
-          allEndpoints.push(endpoint);
-        });
-      });
-      dispatch(setApiEndpoints(allEndpoints));
-    } catch (error) {
-      console.error('获取API端点失败:', error);
-    }
-  };
-
-  // 获取用户的角色列表
-  const fetchUserRoles = async (username: string): Promise<string[]> => {
-    try {
-      const g2Response = await axiosInstance.get(`${server_url}/casbin/policies`, {
-        params: { policy_type: 'g' }
-      });
-      const g2Policies = g2Response.data?.g_policies || [];
-      const userRoles = g2Policies
-        .filter((g: any) => g.user === username)
-        .map((g: any) => g.role);
-      return userRoles;
-    } catch (error) {
-      console.error('获取用户角色失败:', error);
-      return [];
-    }
-  };
-
-  // 根据用户权限计算允许访问的菜单ID列表
-  const calculateAllowedMenuIds = async (username: string, allMenus: MenuTreeItem[]): Promise<string[]> => {
-    try {
-      // 特殊处理：admin 用户拥有所有菜单访问权限
-      if (username === 'admin') {
-        const getAllMenuIds = (items: MenuTreeItem[]): string[] => {
-          let ids: string[] = [];
-          items.forEach(item => {
-            ids.push(item.id);
-            if (item.children && item.children.length > 0) {
-              ids = ids.concat(getAllMenuIds(item.children));
-            }
-          });
-          return ids;
-        };
-        return getAllMenuIds(allMenus);
-      }
-
-      // 获取用户的直接策略和角色
-      const [userPoliciesResponse, userRoles] = await Promise.all([
-        axiosInstance.get(`${server_url}/casbin/policies/get_user_policies`, {
-          params: { username }
-        }),
-        fetchUserRoles(username)
-      ]);
-
-      const directPolicies = userPoliciesResponse.data || [];
-      const allowDirectPolicies = directPolicies.filter((p: any) => p.eft === 'allow');
-
-      // 获取所有角色的策略
-      const rolePoliciesPromises = userRoles.map(roleName =>
-        axiosInstance.get(`${server_url}/casbin/policies/get_role_policies`, {
-          params: { role: roleName }
-        })
-      );
-      const rolePoliciesResponses = await Promise.allSettled(rolePoliciesPromises);
-      
-      let allRolePolicies: any[] = [];
-      rolePoliciesResponses.forEach(result => {
-        if (result.status === 'fulfilled') {
-          const policies = result.value.data || [];
-          allRolePolicies = allRolePolicies.concat(policies.filter((p: any) => p.eft === 'allow'));
-        }
-      });
-
-      // 合并直接策略和角色策略
-      const allPolicies = [...allowDirectPolicies, ...allRolePolicies];
-
-      // 提取父级策略（无 attrs）
-      const parentPolicies = allPolicies.filter((p: any) => {
-        const attrs = p.attrs || {};
-        return Object.keys(attrs).length === 0;
-      });
-
-      // 收集所有有权限的权限项ID
-      const permissionIdSet = new Set<string>();
-
-      permissionItems.forEach(perm => {
-        const apiEndpoint = apiEndpoints.find(api => api.id === perm.code);
-        if (!apiEndpoint) return;
-
-        // 检查是否有完全匹配的策略
-        const exactMatch = allPolicies.find((p: any) => {
-          if (apiEndpoint.Path !== p.obj || apiEndpoint.Method !== p.act) {
-            return false;
-          }
-          const policyAttrs = p.attrs || {};
-          const permAttrs = perm.dynamic_params || {};
-          return JSON.stringify(policyAttrs) === JSON.stringify(permAttrs);
-        });
-
-        if (exactMatch) {
-          permissionIdSet.add(perm.id);
-          return;
-        }
-
-        // 检查是否有父级权限
-        const permAttrs = perm.dynamic_params || {};
-        if (Object.keys(permAttrs).length > 0) {
-          const hasParentPolicy = parentPolicies.some((p: any) =>
-            apiEndpoint.Path === p.obj && apiEndpoint.Method === p.act
-          );
-
-          if (hasParentPolicy) {
-            permissionIdSet.add(perm.id);
-          }
-        }
-      });
-
-      // 从有权限的权限项中提取 menu_ids
-      const menuIdSet = new Set<string>();
-      permissionItems.forEach(perm => {
-        if (permissionIdSet.has(perm.id)) {
-          const menuIdList = perm.menu_ids || (perm.menu_id ? [perm.menu_id] : []);
-          menuIdList.forEach(menuId => menuIdSet.add(menuId));
-        }
-      });
-
-      // 添加所有父菜单ID（确保有子菜单权限时，父菜单也显示）
-      const addParentMenuIds = (menuId: string) => {
-        const findParent = (id: string, items: MenuTreeItem[]): string | null => {
-          for (const item of items) {
-            if (item.id === id && item.parent_id) {
-              return item.parent_id;
-            }
-            if (item.children) {
-              const found = findParent(id, item.children);
-              if (found) return found;
-            }
-          }
-          return null;
-        };
-
-        let currentId: string | null = menuId;
-        while (currentId) {
-          const parentId = findParent(currentId, allMenus);
-          if (parentId) {
-            menuIdSet.add(parentId);
-            currentId = parentId;
-          } else {
-            break;
-          }
-        }
-      };
-
-      Array.from(menuIdSet).forEach(addParentMenuIds);
-
-      return Array.from(menuIdSet);
-    } catch (error) {
-      console.error('计算允许的菜单ID失败:', error);
-      return [];
-    }
-  };
-
-  // 根据用户权限过滤菜单树（保留所有级别）
-  const filterMenuTreeByPermission = (menuItems: MenuTreeItem[], allowedMenuIds: string[]): MenuTreeItem[] => {
-    const hasWildcardAccess = allowedMenuIds.includes("*");
-    
-    const filterItems = (items: MenuTreeItem[]): MenuTreeItem[] => {
-      return items
-        .filter(item => hasWildcardAccess || allowedMenuIds.includes(item.id))
-        .map(item => {
-          const filtered: MenuTreeItem = { ...item };
-          
-          if (item.children && item.children.length > 0) {
-            const filteredChildren = filterItems(item.children);
-            filtered.children = filteredChildren.length > 0 ? filteredChildren : null;
-          }
-          
-          return filtered;
-        });
-    };
-    
-    return filterItems(menuItems);
   };
   
   // 为侧边栏转换菜单树（只显示 1-2 级，3 级作为 tab）
@@ -425,20 +221,17 @@ const AppContent = ({ children }: { children: ReactNode }) => {
           setUser(parsedUser);
           dispatch(setLoading(true));
           
-          // 并行获取所有需要的数据
-          Promise.all([
-            fetchAllMenus(),
-            fetchPermissionItems(),
-            fetchApiEndpoints()
-          ]).then(([allMenus]) => {
-            // allMenus 是完整的菜单树，需要根据用户权限过滤
-            // 过滤逻辑在下面的 useEffect 中处理
-            dispatch(setInitialized(true));
-            dispatch(setLoading(false));
-          }).catch(error => {
-            console.error('获取初始数据失败:', error);
-            dispatch(setLoading(false));
-          });
+          // 直接获取用户有权限的菜单树
+          fetchUserMenuPermissions(parsedUser.username)
+            .then((userMenuTree) => {
+              dispatch(setMenuTree(userMenuTree));
+              dispatch(setInitialized(true));
+              dispatch(setLoading(false));
+            })
+            .catch(error => {
+              console.error('获取用户菜单权限失败:', error);
+              dispatch(setLoading(false));
+            });
         }
       } catch (error) {
         console.error('Invalid token or user:', error);
@@ -452,46 +245,27 @@ const AppContent = ({ children }: { children: ReactNode }) => {
     }
   }, [pathname, router, isInitialized]);
 
-  // 当所有数据加载完成后，根据用户权限过滤并存储菜单树
+  // 当菜单树加载完成后，为侧边栏转换菜单
   useEffect(() => {
-    const buildMenu = async () => {
-      if (!isInitialized || !user || permissionItems.length === 0 || apiEndpoints.length === 0) {
-        return;
-      }
-      
-      try {
-        const decodedToken: DecodedToken = jwtDecode(user.accessToken);
-        const username = decodedToken.sub;
-        
-        // 获取完整菜单树
-        const allMenus = await fetchAllMenus();
-        
-        // 计算允许访问的菜单ID
-        const allowedMenuIds = await calculateAllowedMenuIds(username, allMenus);
-        
-        // 根据权限过滤菜单树（保留所有级别）
-        const filteredTree = filterMenuTreeByPermission(allMenus, allowedMenuIds);
-        
-        // 存储到 Redux（完整的树结构）
-        dispatch(setMenuTree(filteredTree));
-        
-        // 为侧边栏转换（只显示 1-2 级）
-        const sidebarMenu = convertMenuTreeForSidebar(filteredTree);
-        setSidebarMenuData([
-          {
-            path: '/',
-            name: 'Home',
-            icon: getIconByName('SmileOutlined')
-          },
-          ...sidebarMenu
-        ]);
-      } catch (error) {
-        console.error('构建菜单失败:', error);
-      }
-    };
-
-    buildMenu();
-  }, [isInitialized, user, permissionItems, apiEndpoints]);
+    if (!isInitialized || !user || menuTree.length === 0) {
+      return;
+    }
+    
+    try {
+      // 为侧边栏转换（只显示 1-2 级）
+      const sidebarMenu = convertMenuTreeForSidebar(menuTree);
+      setSidebarMenuData([
+        {
+          path: '/',
+          name: 'Home',
+          icon: getIconByName('SmileOutlined')
+        },
+        ...sidebarMenu
+      ]);
+    } catch (error) {
+      console.error('构建侧边栏菜单失败:', error);
+    }
+  }, [isInitialized, user, menuTree]);
   
 
  

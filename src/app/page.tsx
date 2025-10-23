@@ -19,7 +19,7 @@ const Home = () => {
   // 监听用户名和菜单状态变化
   useEffect(() => {
     console.log('User:', userName);
-    console.log('Menu Tree:', menuState.menuTree);
+    console.log('Menu Tree:', JSON.stringify(menuState.menuTree));
     console.log('Menu initialized:', menuState.isInitialized);
   }, [userName, menuState]);
 

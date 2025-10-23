@@ -7,18 +7,15 @@ import { EditOutlined, DeleteOutlined, ExclamationCircleOutlined, DownOutlined }
 import styles from "@/styles/Home.module.css";
 import { SelectedItem, Product, ShipperReceiver, ShippingRequest, Port } from "./types";
 import moment from 'moment';
-// import ProductSearch from '../../../components/ProductSearch';
-import ProductSearch from '@/components/ProductSearch';
+import ProductSearchUnified from '@/components/ProductSearchUnified';
 import ExecuteShip from '@/app/vba/vba-user/execute_ship';
 import withAuth from '@/components/withAuth';
 import ExecuteAir from './execute_air';
 import { store } from '@/store/store';
 import { jwtDecode, JwtPayload } from 'jwt-decode';
-import ProductSearchCanada from '@/components/ProductSearchCanada';
 import ExecuteCanada from './execute_canada';
 import PdfViewDownloadUserAir from './pdf_shenhe_air';
 import PdfViewDownloadUserSea from './pdf_shenhe_sea';
-import ProductSearchVietnam from '@/components/ProductSearchVietnam';
 import DocumentViewer from '@/components/office/DocumentViewer';
 import { preview } from '@ranui/preview'
 import ExecuteAirTidan from './execute_air_tidan';
@@ -46,10 +43,9 @@ interface User {
 const server_url = process.env.NEXT_PUBLIC_BACKEND_URL;
 
 const Vba: React.FC = () => {
-    const [activeTab, setActiveTab] = useState('productSearchGroup');
+    const [activeTab, setActiveTab] = useState('productSearch');
     const [userPermissions, setUserPermissions] = useState<string[]>([]);
     const [userMenuIds, setUserMenuIds] = useState<string[]>([]);
-    const [activeSearchTab, setActiveSearchTab] = useState('productSearch');
 
     useEffect(() => {
         const storedUser = localStorage.getItem('user');
@@ -63,36 +59,20 @@ const Vba: React.FC = () => {
         }
     }, []);
 
-    const renderTabPanes = () => {
-        const menu_items = [
-            { key: 'productSearch', label: '中国出口美国', menuId: '67f4fb3593ffc42375234412' },
-            { key: 'productSearchSea', label: '中国出口美国-海运', menuId: '67f4fb4493ffc42375234413' },
-            { key: 'productSearchSeaVietnam', label: '越南出口美国-海运', menuId: '6837c78a93bfa2999c3c5db6' },
-            { key: 'productSearchCanada', label: '中国出口加拿大', menuId: '67f4fb5293ffc42375234414' },
-        ].filter(item => userMenuIds.includes('*') || userMenuIds.includes(item.menuId));
-        // console.log(userMenuIds);
-        return (
-            <>
-                {menu_items.length > 0 && (
-                    <TabPane
-                        tab={
-                            <Dropdown
-                                menu={{
-                                    items: menu_items.map(({ key, label }) => ({ key, label })),
-                                    onClick: (e) => setActiveSearchTab(e.key),
-                                    selectedKeys: [activeSearchTab],
-                                }}
-                                trigger={['hover', 'click']}
-                            >
-                                <span>{menu_items.find(item => item.key === activeSearchTab)?.label || 'All产品查询'} <DownOutlined /></span>
-                            </Dropdown>
-                        }
-                        key="productSearchGroup"
-                    >
-                        {activeSearchTab === 'productSearch' && (userMenuIds.includes('*') || userMenuIds.includes('67f4fb3593ffc42375234412')) && <ProductSearch data={[]} transport_type="空运" />}
-                        {activeSearchTab === 'productSearchSea' && (userMenuIds.includes('*') || userMenuIds.includes('67f4fb4493ffc42375234413')) && <ProductSearch data={[]} transport_type="海运" />}
-                        {activeSearchTab === 'productSearchCanada' && (userMenuIds.includes('*') || userMenuIds.includes('67f4fb5293ffc42375234414')) && <ProductSearchCanada data={[]} />}
-                        {activeSearchTab === 'productSearchSeaVietnam' && (userMenuIds.includes('*') || userMenuIds.includes('6837c78a93bfa2999c3c5db6')) && <ProductSearchVietnam data={[]} transport_type="海运" />}
+    // 检查是否有任意一个产品查询权限
+    const hasProductSearchPermission = 
+        userMenuIds.includes('*') || 
+        userMenuIds.includes('67f4fb3593ffc42375234412') || 
+        userMenuIds.includes('67f4fb4493ffc42375234413') || 
+        userMenuIds.includes('6837c78a93bfa2999c3c5db6') || 
+        userMenuIds.includes('67f4fb5293ffc42375234414');
+
+    return (
+        <div style={{ width: '100%' }}>
+            <Tabs className={styles.tabs} activeKey={activeTab} onChange={(key) => setActiveTab(key)} destroyInactiveTabPane>
+                {hasProductSearchPermission && (
+                    <TabPane tab="产品查询" key="productSearch">
+                        <ProductSearchUnified />
                     </TabPane>
                 )}
                 {(userMenuIds.includes('*') || userMenuIds.includes('67ca68082e8a2a3084b6fadc')) && (
@@ -156,14 +136,6 @@ const Vba: React.FC = () => {
                 <TabPane tab="清关文件生成" key="qingguan_pdf_generate">
                     <ExecuteAirNew />
                 </TabPane>
-            </>
-        );
-    };
-
-    return (
-        <div style={{ width: '100%' }}>
-            <Tabs className={styles.tabs} defaultActiveKey="productSearchGroup" onChange={(key) => setActiveTab(key)} destroyInactiveTabPane>
-                {renderTabPanes()}
             </Tabs>
         </div>
     );

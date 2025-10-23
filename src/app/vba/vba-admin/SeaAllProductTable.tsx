@@ -55,7 +55,7 @@ const ROUTE_CONFIGS = {
     }
 };
 
-const AllProductTable: React.FC = () => {
+const SeaAllProductTable: React.FC = () => {
     const [isPreviewVisible, setIsPreviewVisible] = useState(false);
     const [products, setProducts] = useState<Product[]>([]);
     const [allProducts, setAllProducts] = useState<Product[]>([]);
@@ -102,13 +102,13 @@ const AllProductTable: React.FC = () => {
     // 路线选择相关状态
     const [startland, setStartland] = useState<string>('');
     const [destination, setDestination] = useState<string>('');
-    const [transport_type, setTransportType] = useState<string>('空运');
+    const transport_type = '海运'; // 固定为海运
     const [currentRoute, setCurrentRoute] = useState<string>('');
     const [showTable, setShowTable] = useState(false);
 
     // 处理查询按钮点击
     const handleRouteSearch = (values: any) => {
-        const { startland: start, destination: dest, transport_type: type } = values;
+        const { startland: start, destination: dest } = values;
         
         if (!start || !dest) {
             message.warning('请选择起运地和目的地');
@@ -117,7 +117,6 @@ const AllProductTable: React.FC = () => {
 
         setStartland(start);
         setDestination(dest);
-        setTransportType(type || '空运');
         setCurrentRoute(`${start}-${dest}`);
         setShowTable(true);
         
@@ -125,7 +124,7 @@ const AllProductTable: React.FC = () => {
         setProductPage(1);
         
         // 获取产品数据
-        fetchAllProducts(start, dest, type || '空运');
+        fetchAllProducts(start, dest, '海运');
     };
 
     const fetchAllProducts = async (start: string, dest: string, type: string, append = false) => {
@@ -699,7 +698,7 @@ const AllProductTable: React.FC = () => {
 
     return (
         <div className={styles.formContainer}>
-            <h1 className={styles.title}>全局产品管理</h1>
+            <h1 className={styles.title}>海运产品管理</h1>
             
             {/* 路线选择区域 */}
             <Card style={{ marginBottom: 16 }}>
@@ -712,7 +711,6 @@ const AllProductTable: React.FC = () => {
                         <Select style={{ width: 150 }} placeholder="请选择起运地">
                             <Option value="China">中国</Option>
                             <Option value="Vietnam">越南</Option>
-
                         </Select>
                     </Form.Item>
                     <Form.Item label="目的地" name="destination" rules={[{ required: true, message: '请选择目的地' }]}>
@@ -722,12 +720,6 @@ const AllProductTable: React.FC = () => {
                             <Option value="Europe">欧洲</Option>
                             <Option value="Australia">澳洲</Option>
                             <Option value="England">英国</Option>
-                        </Select>
-                    </Form.Item>
-                    <Form.Item label="运输方式" name="transport_type" initialValue="空运">
-                        <Select style={{ width: 120 }}>
-                            <Option value="空运">空运</Option>
-                            <Option value="海运">海运</Option>
                         </Select>
                     </Form.Item>
                     <Form.Item>
@@ -797,7 +789,7 @@ const AllProductTable: React.FC = () => {
 
                     <Row justify="space-between" style={{ marginBottom: 16 }}>
                         <Space>
-                            <strong>当前路线：{ROUTE_CONFIGS[currentRoute as keyof typeof ROUTE_CONFIGS]?.label} - {transport_type}</strong>
+                            <strong>当前路线：{ROUTE_CONFIGS[currentRoute as keyof typeof ROUTE_CONFIGS]?.label} - 海运</strong>
                         </Space>
                         <Space>
                             {selectedRowKeys.length > 0 && (
@@ -1187,4 +1179,4 @@ const AllProductTable: React.FC = () => {
     );
 };
 
-export default AllProductTable;
+export default SeaAllProductTable;
