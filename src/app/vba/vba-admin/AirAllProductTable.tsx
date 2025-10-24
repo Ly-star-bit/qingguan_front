@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Product } from './types';
-import { Table, Button, Form, Input, Modal, Pagination, message, Select, Upload, Space, Spin, Dropdown, Card, Row, Col, Tooltip } from 'antd';
+import { Table, Button, Form, Input, Modal, Pagination, message, Select, Upload, Space, Spin, Dropdown, Card, Row, Col, Tooltip, AutoComplete } from 'antd';
 import moment from 'moment';
 import { EditOutlined, DeleteOutlined, ExclamationCircleOutlined, UploadOutlined, EyeOutlined, MinusCircleOutlined, PlusOutlined, CopyOutlined, RetweetOutlined, MoreOutlined, SearchOutlined } from '@ant-design/icons';
 import styles from "@/styles/Home.module.css"
@@ -76,6 +76,8 @@ const AirAllProductTable: React.FC = () => {
     const [isUpdating, setIsUpdating] = useState(false);
     const [categories, setCategories] = useState<string[]>([]);
     const [factories, setFactories] = useState<any[]>([]);
+    const [tariffTypes, setTariffTypes] = useState<string[]>([]);
+    const [tariffData, setTariffData] = useState<any[]>([]);
 
     const userName = useSelector((state: RootState) => state.user.name);
 
@@ -94,9 +96,36 @@ const AirAllProductTable: React.FC = () => {
         }
     };
 
-    // 在组件加载时获取工厂列表
+    // 获取加征类型列表
+    const fetchTariffTypes = async () => {
+        try {
+            const response = await axiosInstance.get(`${server_url}/qingguan/tariff/tariff-types/list`);
+            setTariffTypes(response.data || []);
+        } catch (error) {
+            console.log('获取加征类型失败');
+        }
+    };
+
+    // 获取当前路线的完整加征数据
+    const fetchTariffData = async (start: string, dest: string, category: string) => {
+        try {
+            const response = await axiosInstance.post(`${server_url}/qingguan/tariff/query`, {
+                start_land: start || null,
+                destination: dest || null,
+                category: category || null,
+                tariff_type: null
+            });
+            setTariffData(response.data || []);
+        } catch (error) {
+            console.log('获取加征数据失败');
+            setTariffData([]);
+        }
+    };
+
+    // 在组件加载时获取工厂列表和加征类型
     useEffect(() => {
         fetchFactories();
+        fetchTariffTypes();
     }, []);
 
     // 路线选择相关状态
@@ -418,9 +447,12 @@ const AirAllProductTable: React.FC = () => {
         return [...baseColumns, ...dynamicColumns];
     };
 
-    const handleEdit = (record: Product) => {
+    const handleEdit = async (record: Product) => {
         productForm.resetFields();
         setEditingProduct(record);
+        
+        // 获取当前路线和类别的加征数据
+        await fetchTariffData(startland, destination, record.类别 || '');
         
         setTimeout(() => {
             const jiazhengArray = record.加征 ? 
@@ -431,6 +463,7 @@ const AirAllProductTable: React.FC = () => {
 
             productForm.setFieldsValue({
                 ...record,
+                类别: record.类别 || '',
                 startland: startland,
                 destination: destination,
                 transport_type: transport_type,
@@ -445,9 +478,13 @@ const AirAllProductTable: React.FC = () => {
         }, 0);
     };
 
-    const handleAdd = () => {
+    const handleAdd = async () => {
         setEditingProduct(null);
         productForm.resetFields();
+        
+        // 获取当前路线的加征数据
+        await fetchTariffData(startland, destination, '');
+        
         // 设置默认值
         productForm.setFieldsValue({
             startland: startland,
@@ -998,10 +1035,33 @@ const AirAllProductTable: React.FC = () => {
                                             <Form.Item
                                                 {...restField}
                                                 name={[name, 'name']}
-                                                rules={[{ required: true, message: '请输入加征名称' }]}
+                                                rules={[{ required: true, message: '请选择或输入加征名称' }]}
                                                 style={{ margin: 0, flex: 1 }}
                                             >
-                                                <Input placeholder="加征名称" />
+                                                <AutoComplete
+                                                    placeholder="请选择或输入加征名称"
+                                                    options={tariffTypes.map(type => ({ label: type, value: type }))}
+                                                    filterOption={(inputValue, option) =>
+                                                        (option?.label ?? '').toString().toLowerCase().includes(inputValue.toLowerCase())
+                                                    }
+                                                    allowClear
+                                                    onChange={(value) => {
+                                                        // 查找选中的加征类型对应的税率
+                                                        const selectedTariff = tariffData.find(
+                                                            (t: any) => t.tariff_type === value
+                                                        );
+                                                        if (selectedTariff) {
+                                                            // 自动填充税率值（小数格式，如0.20）
+                                                            const currentValues = productForm.getFieldValue('加征') || [];
+                                                            currentValues[name] = {
+                                                                ...currentValues[name],
+                                                                name: `加征_${value}`,
+                                                                value: selectedTariff.tariff_rate,
+                                                            };
+                                                            productForm.setFieldsValue({ 加征: currentValues });
+                                                        }
+                                                    }}
+                                                />
                                             </Form.Item>
                                             <Form.Item
                                                 {...restField}
@@ -1051,7 +1111,15 @@ const AirAllProductTable: React.FC = () => {
                     <Row gutter={16}>
                         <Col span={12}>
                             <Form.Item label="类别" name="类别" rules={[{ required: true, message: '类别是必填项' }]}>
-                                <Input />
+                                <AutoComplete
+                                showSearch
+                                    placeholder="请选择或输入类别"
+                                    options={categories.map(cat => ({ label: cat, value: cat }))}
+                                    filterOption={(inputValue, option) =>
+                                        (option?.label ?? '').toString().toLowerCase().includes(inputValue.toLowerCase())
+                                    }
+                                    allowClear
+                                />
                             </Form.Item>
                         </Col>
                         <Col span={12}>

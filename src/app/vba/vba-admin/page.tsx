@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Table, Button, Form, Input, Modal, Pagination, Tabs, Select, DatePicker, Dropdown, Switch, message } from 'antd';
-import { EditOutlined, DeleteOutlined, ExclamationCircleOutlined, DownOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, ExclamationCircleOutlined, DownOutlined, ReloadOutlined } from '@ant-design/icons';
 import styles from "@/styles/Home.module.css"
 import { SelectedItem, Product, ShipperReceiver, ShippingRequest, Port } from "./types"
 import moment from 'moment';
@@ -46,6 +46,7 @@ const Vba: React.FC = () => {
     // --- 状态重构 ---
     // 1. 主选项卡状态
     const [activeTab, setActiveTab] = useState('');
+    const [refreshKey, setRefreshKey] = useState(0);
 
     // 2. 每个下拉菜单内部的子选项状态
     const [activeAirProduct, setActiveAirProduct] = useState('productData');
@@ -53,6 +54,10 @@ const Vba: React.FC = () => {
     const [activeSearch, setActiveSearch] = useState('productSearch');
     const menuState = useSelector((state: RootState) => state.menu);
     const userName = useSelector((state: RootState) => state.user.name);
+
+    const handleRefresh = () => {
+        setRefreshKey(prev => prev + 1);
+    };
 
     // 获取"文件制作-管理员"的tab权限
     const getTabPermissions = (): string[] => {
@@ -80,16 +85,16 @@ const Vba: React.FC = () => {
 
     // Tab配置映射
     const tabConfigs = [
-        { key: 'AirProduct', permissionKey: 'AirAllProductTable', tab: '空运产品', component: <AirAllProductTable /> },
-        { key: 'SeaProduct', permissionKey: 'SeaAllProductTable', tab: '海运产品', component: <SeaAllProductTable /> },
-        { key: 'ConsigneeData', permissionKey: 'ConsigneeTable', tab: '收发货人', component: <ConsigneeTable /> },
-        { key: 'FactoryData', permissionKey: 'FactoryTable', tab: '工厂数据', component: <FactoryTable /> },
-        { key: 'PortData', permissionKey: 'PortsPage', tab: '港口数据', component: <PortsPage /> },
-        { key: 'PackingType', permissionKey: 'PackingTypeTable', tab: '装箱类型', component: <PackingTypeTable /> },
-        { key: 'HaiyunZishui', permissionKey: 'HaiyunZishuiPage', tab: '海运自税', component: <HaiyunZishuiPage /> },
-        { key: 'TariffManagement', permissionKey: 'TariffManagement', tab: '加征关税管理', component: <TariffManagement /> },
-        { key: 'pdf_history', permissionKey: 'PdfViewDownload', tab: 'pdf历史记录', component: <PdfViewDownload /> },
-        { key: 'system', permissionKey: 'SystemForbidden', tab: '系统管理', component: <SystemForbidden /> },
+        { key: 'AirProduct', permissionKey: 'AirAllProductTable', tab: '空运产品', component: <AirAllProductTable key={`AirProduct-${refreshKey}`} /> },
+        { key: 'SeaProduct', permissionKey: 'SeaAllProductTable', tab: '海运产品', component: <SeaAllProductTable key={`SeaProduct-${refreshKey}`} /> },
+        { key: 'ConsigneeData', permissionKey: 'ConsigneeTable', tab: '收发货人', component: <ConsigneeTable key={`ConsigneeData-${refreshKey}`} /> },
+        { key: 'FactoryData', permissionKey: 'FactoryTable', tab: '工厂数据', component: <FactoryTable key={`FactoryData-${refreshKey}`} /> },
+        { key: 'PortData', permissionKey: 'PortsPage', tab: '港口数据', component: <PortsPage key={`PortData-${refreshKey}`} /> },
+        { key: 'PackingType', permissionKey: 'PackingTypeTable', tab: '装箱类型', component: <PackingTypeTable key={`PackingType-${refreshKey}`} /> },
+        { key: 'HaiyunZishui', permissionKey: 'HaiyunZishuiPage', tab: '海运自税', component: <HaiyunZishuiPage key={`HaiyunZishui-${refreshKey}`} /> },
+        { key: 'TariffManagement', permissionKey: 'TariffManagement', tab: '加征关税管理', component: <TariffManagement key={`TariffManagement-${refreshKey}`} /> },
+        { key: 'pdf_history', permissionKey: 'PdfViewDownload', tab: 'pdf历史记录', component: <PdfViewDownload key={`pdf_history-${refreshKey}`} /> },
+        { key: 'system', permissionKey: 'SystemForbidden', tab: '系统管理', component: <SystemForbidden key={`system-${refreshKey}`} /> },
     ];
 
     // 获取有权限的tabs
@@ -124,7 +129,20 @@ const Vba: React.FC = () => {
             </Head>
             <div style={{ width: '100%' }}>
                 {/* 使用 activeKey 控制主选项卡 */}
-                <Tabs className={styles.tabs} activeKey={activeTab} onChange={(key) => setActiveTab(key)} destroyInactiveTabPane>
+                <Tabs 
+                    className={styles.tabs} 
+                    activeKey={activeTab} 
+                    onChange={(key) => setActiveTab(key)} 
+                    destroyInactiveTabPane
+                    tabBarExtraContent={
+                        <Button 
+                            type="text" 
+                            icon={<ReloadOutlined />} 
+                            onClick={handleRefresh}
+                            title="刷新当前页面"
+                        />
+                    }
+                >
                     {/* 根据权限动态渲染tabs */}
                     {authorizedTabs.map(config => (
                         <TabPane tab={config.tab} key={config.key}>

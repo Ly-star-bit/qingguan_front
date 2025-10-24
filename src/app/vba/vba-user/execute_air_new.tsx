@@ -101,7 +101,7 @@ const API_ENDPOINTS = {
 };
 
 // console.log(server_url)
-const ExecuteAirNew: React.FC = () => {
+const ExecuteQingguanFileGenerate: React.FC = () => {
 
 
     const [products, setProducts] = useState<Product[]>([]);
@@ -195,7 +195,7 @@ const ExecuteAirNew: React.FC = () => {
             fetchAllProducts(selectedCountry);
             fetchAllPorts()
         }
-        console.log(CnUsdRate)
+        // console.log(CnUsdRate)
     }, [selectedCountry, shippingType]);
 
     useEffect(() => {
@@ -2343,4 +2343,4 @@ const ExecuteAirNew: React.FC = () => {
 };
 
 
-export default ExecuteAirNew;
+export default ExecuteQingguanFileGenerate;

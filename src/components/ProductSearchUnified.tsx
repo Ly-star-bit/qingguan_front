@@ -159,7 +159,8 @@ const ProductSearchUnified: React.FC<ProductSearchUnifiedProps> = ({
     };
 
     const handleCategoryChange = (value: string | undefined) => {
-        if (!value || value.trim() === '') {
+        if (!value || value.trim() === '' || value === '*') {
+            // 空值或 * 代表显示全部
             setFilteredProducts(products);
         } else {
             const filtered = products.filter(p => p.类别?.includes(value));
@@ -422,10 +423,13 @@ const ProductSearchUnified: React.FC<ProductSearchUnifiedProps> = ({
                                     onChange={handleCategoryChange}
                                     placeholder="输入类别"
                                     allowClear
-                                    options={Array.from(new Set(products.map(product => product.类别))).map(category => ({
-                                        value: category,
-                                        label: category,
-                                    }))}
+                                    options={[
+                                        { value: '*', label: '* (全部)' },
+                                        ...Array.from(new Set(products.map(product => product.类别))).map(category => ({
+                                            value: category,
+                                            label: category,
+                                        }))
+                                    ]}
                                 >
                                     <Input />
                                 </AutoComplete>

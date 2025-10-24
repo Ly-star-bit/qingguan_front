@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Form, Input, Modal, message, Select, Card, Row, Col, Space, Spin, InputNumber } from 'antd';
+import { Table, Button, Form, Input, Modal, message, Select, Card, Row, Col, Space, Spin, InputNumber, Tag } from 'antd';
 import { EditOutlined, DeleteOutlined, ExclamationCircleOutlined, SearchOutlined, PlusOutlined } from '@ant-design/icons';
 import styles from "@/styles/Home.module.css";
 import axiosInstance from '@/utils/axiosInstance';
@@ -80,7 +80,7 @@ const TariffManagement: React.FC = () => {
 
     const fetchTariffTypes = async () => {
         try {
-            const response = await axiosInstance.get(`${server_url}/qingguan/tariff-types/list`);
+            const response = await axiosInstance.get(`${server_url}/qingguan/tariff/tariff-types/list`);
             setTariffTypes(response.data);
         } catch (error) {
             console.log('暂无关税类型数据');
@@ -96,17 +96,17 @@ const TariffManagement: React.FC = () => {
 
     const handleEdit = async (record: Tariff) => {
         setEditingTariff(record);
-        
+
         // 先加载产品类别列表
         const cats = await fetchProductCategories(record.start_land, record.destination);
         setCategories(cats);
-        
+
         // 确保category是数组格式
         let categoryValue = record.category;
         if (typeof categoryValue === 'string') {
             categoryValue = [categoryValue];
         }
-        
+
         tariffForm.setFieldsValue({
             start_land: record.start_land,
             destination: record.destination,
@@ -115,7 +115,7 @@ const TariffManagement: React.FC = () => {
             tariff_rate: record.tariff_rate * 100, // 转换为百分比显示
             description: record.description
         });
-        
+
         setIsModalVisible(true);
     };
 
@@ -238,12 +238,29 @@ const TariffManagement: React.FC = () => {
             key: 'category',
             width: 200,
             render: (category: string | string[]) => {
-                if (Array.isArray(category)) {
-                    return category.join(', ');
-                }
-                return category;
+                const categories = Array.isArray(category) ? category : [category];
+                const filtered = categories.filter(Boolean);
+
+                if (filtered.length === 0) return '-';
+
+                return (
+                    <div style={{
+                        maxHeight: '80px',
+                        overflow: 'auto',
+                        paddingRight: '4px'
+                    }}>
+                        <Space size="small" wrap>
+                            {filtered.map((cat, idx) => (
+                                <Tag key={idx} color="blue">
+                                    {cat}
+                                </Tag>
+                            ))}
+                        </Space>
+                    </div>
+                );
             }
         },
+
         {
             title: '关税类型',
             dataIndex: 'tariff_type',
@@ -401,7 +418,7 @@ const TariffManagement: React.FC = () => {
                         if (changedValues.start_land !== undefined || changedValues.destination !== undefined) {
                             const startLand = tariffForm.getFieldValue('start_land');
                             const destination = tariffForm.getFieldValue('destination');
-                            
+
                             if (startLand && destination) {
                                 const cats = await fetchProductCategories(startLand, destination);
                                 setCategories(cats);
@@ -461,7 +478,10 @@ const TariffManagement: React.FC = () => {
                                     showSearch
                                     allowClear
                                     placeholder="请先选择起运地和目的地"
-                                    options={categories.map(cat => ({ label: cat, value: cat }))}
+                                    options={[
+                                        { label: '*全部', value: '*全部' },
+                                        ...categories.map(cat => ({ label: cat, value: cat }))
+                                    ]}
                                     disabled={categories.length === 0}
                                 />
                             </Form.Item>

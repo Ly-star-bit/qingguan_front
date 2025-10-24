@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import axiosInstance from '@/utils/axiosInstance';
 import { Table, Button, Form, Input, Modal, Pagination, Tabs, Select, DatePicker, Checkbox, Typography, Dropdown, Row, Col } from 'antd';
-import { EditOutlined, DeleteOutlined, ExclamationCircleOutlined, DownOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, ExclamationCircleOutlined, DownOutlined, ReloadOutlined } from '@ant-design/icons';
 import styles from "@/styles/Home.module.css";
 import { SelectedItem, Product, ShipperReceiver, ShippingRequest, Port } from "./types";
 import moment from 'moment';
@@ -11,8 +11,8 @@ import ProductSearchUnified from '@/components/ProductSearchUnified';
 import ExecuteShip from '@/app/vba/vba-user/execute_ship';
 import withAuth from '@/components/withAuth';
 import ExecuteAir from './execute_air';
-import { store } from '@/store/store';
-import { jwtDecode, JwtPayload } from 'jwt-decode';
+import { RootState } from '@/store/store';
+import { useSelector } from 'react-redux';
 import ExecuteCanada from './execute_canada';
 import PdfViewDownloadUserAir from './pdf_shenhe_air';
 import PdfViewDownloadUserSea from './pdf_shenhe_sea';
@@ -20,122 +20,164 @@ import DocumentViewer from '@/components/office/DocumentViewer';
 import { preview } from '@ranui/preview'
 import ExecuteAirTidan from './execute_air_tidan';
 import TodoComponent from './todo_component';
-import ExecuteAirNew from './execute_air_new';
+import ExecuteQingguanFileGenerate from './execute_air_new';
+import PdfViewDownloadUserAll from './pdf_shenhe_all';
 const { TabPane } = Tabs;
 const { confirm } = Modal;
 
-interface DecodedToken {
-    exp: number;
-    sub: string;
-    role: string;
-    permissions: [string, string, string, string][];
-    menu_ids: string[];
-}
-
-interface User {
-    username: string;
-    accessToken: string;
-    tokenType: string;
-    role: string;
-}
-
-// const server_url = "http://localhost:9008";
 const server_url = process.env.NEXT_PUBLIC_BACKEND_URL;
 
 const Vba: React.FC = () => {
-    const [activeTab, setActiveTab] = useState('productSearch');
-    const [userPermissions, setUserPermissions] = useState<string[]>([]);
-    const [userMenuIds, setUserMenuIds] = useState<string[]>([]);
+    const [activeTab, setActiveTab] = useState('');
+    const [refreshKey, setRefreshKey] = useState(0);
+    const menuState = useSelector((state: RootState) => state.menu);
+    const userName = useSelector((state: RootState) => state.user.name);
 
-    useEffect(() => {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-            const parsedUser: User = JSON.parse(storedUser);
-            const { accessToken } = parsedUser;
-            const decodedToken: DecodedToken = jwtDecode(accessToken);
-            const permissions = decodedToken.permissions.map(permission => permission[1]);
-            setUserPermissions(permissions);
-            setUserMenuIds(decodedToken.menu_ids);
+    const handleRefresh = () => {
+        setRefreshKey(prev => prev + 1);
+    };
+
+    // 获取"文件制作"的tab权限
+    const getTabPermissions = (): string[] => {
+        try {
+            const functionModule = menuState.menuTree?.find((item: any) => item.name === "功能模块");
+            if (functionModule && functionModule.children) {
+                const userFileMenu = functionModule.children.find((item: any) => item.name === "文件制作-用户");
+                if (userFileMenu && userFileMenu.children) {
+                    return userFileMenu.children
+                        .filter((child: any) => child.path && child.path.startsWith('tab-'))
+                        .map((child: any) => child.path.replace('tab-', ''));
+                }
+            }
+        } catch (error) {
+            console.error('获取tab权限失败:', error);
         }
-    }, []);
+        return [];
+    };
 
-    // 检查是否有任意一个产品查询权限
-    const hasProductSearchPermission = 
-        userMenuIds.includes('*') || 
-        userMenuIds.includes('67f4fb3593ffc42375234412') || 
-        userMenuIds.includes('67f4fb4493ffc42375234413') || 
-        userMenuIds.includes('6837c78a93bfa2999c3c5db6') || 
-        userMenuIds.includes('67f4fb5293ffc42375234414');
+    // 检查是否有某个tab的权限
+    const hasTabPermission = (tabKey: string): boolean => {
+        const permissions = getTabPermissions();
+        return permissions.includes(tabKey);
+    };
+
+    // Tab配置映射
+    const tabConfigs = [
+        { 
+            key: 'productSearch', 
+            permissionKey: 'ProductSearchUnified', 
+            tab: '产品查询', 
+            component: <ProductSearchUnified key={`productSearch-${refreshKey}`} /> 
+        },
+        { 
+            key: 'execute-air', 
+            permissionKey: 'ExecuteAir', 
+            tab: '执行-空运', 
+            component: <ExecuteAir key={`execute-air-${refreshKey}`} /> 
+        },
+        { 
+            key: 'execute-ship', 
+            permissionKey: 'ExecuteShip', 
+            tab: '执行-海运', 
+            component: <ExecuteShip key={`execute-ship-${refreshKey}`} /> 
+        },
+        { 
+            key: 'execute-canada', 
+            permissionKey: 'ExecuteCanada', 
+            tab: '执行-加拿大', 
+            component: <ExecuteCanada key={`execute-canada-${refreshKey}`} /> 
+        },
+        { 
+            key: 'airtian', 
+            permissionKey: 'ExecuteAirTidan', 
+            tab: '分舱单制作', 
+            component: <ExecuteAirTidan key={`airtian-${refreshKey}`} /> 
+        },
+        { 
+            key: 'todo_card_task', 
+            permissionKey: 'TodoComponent', 
+            tab: 'todo卡片', 
+            component: (
+                <div style={{ padding: '16px' }} key={`todo_card_task-${refreshKey}`}>
+                    <Row gutter={[16, 16]}>
+                        <Col xs={24} sm={24} md={12} lg={8} xl={6}>
+                            <TodoComponent
+                                apiEndpoint="/fentan/execute"
+                                title="分摊任务处理"
+                                apiParams={{
+                                    task_type: {
+                                        type: 'select',
+                                        label: '任务类型',
+                                        options: [
+                                            { label: '上海平政', value: '上海平政' },
+                                            { label: 'close分摊', value: 'close分摊' },
+                                            { label: '广州航捷', value: '广州航捷' },
+                                        ],
+                                        defaultValue: '上海平政'
+                                    }
+                                }}
+                                enableFileUpload={true}
+                                enableApiParams={true}
+                                downloadBaseUrl="/fentan/"
+                            />
+                        </Col>
+                    </Row>
+                </div>
+            )
+        },
+        { 
+            key: 'qingguan_pdf_generate', 
+            permissionKey: 'ExecuteQingguanFileGenerate', 
+            tab: '清关文件生成', 
+            component: <ExecuteQingguanFileGenerate key={`qingguan_pdf_generate-${refreshKey}`} /> 
+        },
+        { 
+            key: 'pdf_shenhe_all', 
+            permissionKey: 'PdfViewDownloadUserAll', 
+            tab: 'pdf审核文件', 
+            component: <PdfViewDownloadUserAll key={`pdf_shenhe_all-${refreshKey}`} /> 
+        },
+    ];
+
+    // 获取有权限的tabs
+    const authorizedTabs = tabConfigs.filter(config => hasTabPermission(config.permissionKey));
+
+    // 调试信息
+    useEffect(() => {
+        const permissions = getTabPermissions();
+        // console.log(menuState)
+        console.log('Tab Permissions:', permissions);
+        console.log('Authorized Tabs:', authorizedTabs.map(t => t.key));
+    }, [menuState]);
+
+    // 设置默认的activeTab为第一个有权限的tab
+    useEffect(() => {
+        if (!activeTab && authorizedTabs.length > 0) {
+            setActiveTab(authorizedTabs[0].key);
+        }
+    }, [authorizedTabs, activeTab]);
 
     return (
         <div style={{ width: '100%' }}>
-            <Tabs className={styles.tabs} activeKey={activeTab} onChange={(key) => setActiveTab(key)} destroyInactiveTabPane>
-                {hasProductSearchPermission && (
-                    <TabPane tab="产品查询" key="productSearch">
-                        <ProductSearchUnified />
+            <Tabs 
+                className={styles.tabs} 
+                activeKey={activeTab} 
+                onChange={(key) => setActiveTab(key)} 
+                destroyInactiveTabPane
+                tabBarExtraContent={
+                    <Button 
+                        type="text" 
+                        icon={<ReloadOutlined />} 
+                        onClick={handleRefresh}
+                        title="刷新当前页面"
+                    />
+                }
+            >
+                {authorizedTabs.map(config => (
+                    <TabPane tab={config.tab} key={config.key}>
+                        {config.component}
                     </TabPane>
-                )}
-                {(userMenuIds.includes('*') || userMenuIds.includes('67ca68082e8a2a3084b6fadc')) && (
-                    <TabPane tab="执行-空运" key="execute-air">
-                        <ExecuteAir />
-                    </TabPane>
-                )}
-                {(userMenuIds.includes('*') || userMenuIds.includes('67ca68392e8a2a3084b6fadd')) && (
-                    <TabPane tab="执行-海运" key="execute-ship">
-                        <ExecuteShip />
-                    </TabPane>
-                )}
-                {(userMenuIds.includes('*') || userMenuIds.includes('6802040b1aca4c9055634870')) && (
-                    <TabPane tab="执行-加拿大" key="execute-canada">
-                        <ExecuteCanada />
-                    </TabPane>
-                )}
-                {(userMenuIds.includes('*') || userMenuIds.includes('6819c8cba05671c34b3b6ed9')) && (
-                    <TabPane tab="清关历史记录-空运" key="pdf-shenhe-air">
-                        <PdfViewDownloadUserAir />
-                    </TabPane>
-                )}
-                {(userMenuIds.includes('*') || userMenuIds.includes('6835781893bfa2999c3c5db2')) && (
-                    <TabPane tab="清关历史记录-海运" key="pdf-shenhe-sea">
-                        <PdfViewDownloadUserSea />
-                    </TabPane>
-                )}
-                {(userMenuIds.includes('*') || userMenuIds.includes('68a2f3997139a7a29cd7f126')) && (
-                    <TabPane tab="分舱单制作" key="airtian">
-                        <ExecuteAirTidan></ExecuteAirTidan>
-                    </TabPane>
-                )}
-                <TabPane tab="todo卡片" key="todo_card_task">
-                    <div style={{ padding: '16px' }}>
-                        <Row gutter={[16, 16]}>
-                            <Col xs={24} sm={24} md={12} lg={8} xl={6}>
-                                <TodoComponent
-                                    apiEndpoint="/fentan/execute"
-                                    title="分摊任务处理"
-                                    apiParams={{
-                                        task_type: {
-                                            type: 'select',
-                                            label: '任务类型',
-                                            options: [
-                                                { label: '上海平政', value: '上海平政' },
-                                                { label: 'close分摊', value: 'close分摊' },
-                                                { label: '广州航捷', value: '广州航捷' },
-                                            ],
-                                            defaultValue: '上海平政'
-                                        }
-                                    }}
-                                    enableFileUpload={true}
-                                    enableApiParams={true}
-                                    downloadBaseUrl="/fentan/"
-                                />
-                            </Col>
-                        </Row>
-                    </div>
-                </TabPane>
-
-                <TabPane tab="清关文件生成" key="qingguan_pdf_generate">
-                    <ExecuteAirNew />
-                </TabPane>
+                ))}
             </Tabs>
         </div>
     );
