@@ -9,6 +9,13 @@ import Box from '@mui/material/Box';
 import { DataGrid, GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
 import { SyncOutlined } from '@ant-design/icons';
 import axiosInstance from '@/utils/axiosInstance';
+import { 
+    getUserRoutePermissions, 
+    getUniqueStartlands, 
+    getUniqueDestinations, 
+    hasRoutePermission,
+    RoutePermission 
+} from '@/utils/permissionService';
 
 const { Option } = Select;
 
@@ -83,6 +90,69 @@ const ProductSearchUnified: React.FC<ProductSearchUnifiedProps> = ({
     const [startland, setStartland] = useState(defaultStartland);
     const [destination, setDestination] = useState(defaultDestination);
     const [transportType, setTransportType] = useState(defaultTransportType);
+    
+    // 权限状态
+    const [airPermissions, setAirPermissions] = useState<RoutePermission[]>([]);
+    const [seaPermissions, setSeaPermissions] = useState<RoutePermission[]>([]);
+    const [availableStartlands, setAvailableStartlands] = useState<string[]>([]);
+    const [availableDestinations, setAvailableDestinations] = useState<string[]>([]);
+    const [permissionsLoaded, setPermissionsLoaded] = useState(false);
+
+    // 加载用户权限
+    useEffect(() => {
+        const loadPermissions = async () => {
+            if (!userName) return;
+            
+            try {
+                const permissions = await getUserRoutePermissions(userName);
+                setAirPermissions(permissions.air);
+                setSeaPermissions(permissions.sea);
+                
+                // 根据当前运输类型更新可用选项
+                const currentPermissions = transportType === '空运' ? permissions.air : permissions.sea;
+                const startlands = getUniqueStartlands(currentPermissions);
+                const destinations = getUniqueDestinations(currentPermissions);
+                
+                setAvailableStartlands(startlands);
+                setAvailableDestinations(destinations);
+                
+                // 如果当前选择不在权限范围内，设置为第一个可用选项
+                if (startlands.length > 0 && !startlands.includes(startland)) {
+                    setStartland(startlands[0]);
+                }
+                if (destinations.length > 0 && !destinations.includes(destination)) {
+                    setDestination(destinations[0]);
+                }
+                
+                setPermissionsLoaded(true);
+            } catch (error) {
+                console.error('加载权限失败:', error);
+                message.error('加载权限失败');
+            }
+        };
+        
+        loadPermissions();
+    }, [userName]);
+    
+    // 当运输类型改变时，更新可用的起运地和目的地选项
+    useEffect(() => {
+        if (!permissionsLoaded) return;
+        
+        const currentPermissions = transportType === '空运' ? airPermissions : seaPermissions;
+        const startlands = getUniqueStartlands(currentPermissions);
+        const destinations = getUniqueDestinations(currentPermissions);
+        
+        setAvailableStartlands(startlands);
+        setAvailableDestinations(destinations);
+        
+        // 如果当前选择不在新的权限范围内，设置为第一个可用选项
+        if (startlands.length > 0 && !startlands.includes(startland)) {
+            setStartland(startlands[0]);
+        }
+        if (destinations.length > 0 && !destinations.includes(destination)) {
+            setDestination(destinations[0]);
+        }
+    }, [transportType, permissionsLoaded]);
 
     const calculateTotalJiazheng = (product: Product) => {
         let totalJiazheng = 0;
@@ -102,6 +172,17 @@ const ProductSearchUnified: React.FC<ProductSearchUnifiedProps> = ({
     };
 
     const fetchProducts = async () => {
+        // 检查权限
+        if (permissionsLoaded) {
+            const currentPermissions = transportType === '空运' ? airPermissions : seaPermissions;
+            const hasPermission = hasRoutePermission(currentPermissions, startland, destination);
+            
+            if (!hasPermission) {
+                message.warning('您没有查询此路线的权限');
+                return;
+            }
+        }
+        
         setLoading(true);
         try {
             let url;
@@ -356,9 +437,13 @@ const ProductSearchUnified: React.FC<ProductSearchUnifiedProps> = ({
                             value={startland}
                             onChange={setStartland}
                             style={{ width: 150 }}
+                            disabled={!permissionsLoaded || availableStartlands.length === 0}
                         >
-                            <Option value="China">中国</Option>
-                            <Option value="Vietnam">越南</Option>
+                            {availableStartlands.map(sl => (
+                                <Option key={sl} value={sl}>
+                                    {sl === 'China' ? '中国' : sl === 'Vietnam' ? '越南' : sl}
+                                </Option>
+                            ))}
                         </Select>
                     </Form.Item>
                     <Form.Item label="目的地">
@@ -366,9 +451,13 @@ const ProductSearchUnified: React.FC<ProductSearchUnifiedProps> = ({
                             value={destination}
                             onChange={setDestination}
                             style={{ width: 150 }}
+                            disabled={!permissionsLoaded || availableDestinations.length === 0}
                         >
-                            <Option value="America">美国</Option>
-                            <Option value="Canada">加拿大</Option>
+                            {availableDestinations.map(dest => (
+                                <Option key={dest} value={dest}>
+                                    {dest === 'America' ? '美国' : dest === 'Canada' ? '加拿大' : dest === 'Vietnam' ? '越南' : dest}
+                                </Option>
+                            ))}
                         </Select>
                     </Form.Item>
                     {destination !== 'Canada' && (

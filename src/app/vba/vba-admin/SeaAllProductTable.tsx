@@ -947,7 +947,7 @@ const SeaAllProductTable: React.FC = () => {
                             </Form.Item>
                         </Col>
                         <Col span={12}>
-                            <Form.Item label="件/箱" name="件箱">
+                            <Form.Item label="件/箱" name="件箱" rules={[{ required: true}]}>
                                 <Input />
                             </Form.Item>
                         </Col>
@@ -955,7 +955,7 @@ const SeaAllProductTable: React.FC = () => {
 
                     <Row gutter={16}>
                         <Col span={12}>
-                            <Form.Item label="单价" name="单价">
+                            <Form.Item label="单价" name="单价" rules={[{ required: true}]}>
                                 <Input />
                             </Form.Item>
                         </Col>
