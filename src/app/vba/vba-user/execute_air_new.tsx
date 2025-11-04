@@ -126,6 +126,9 @@ const ExecuteQingguanFileGenerate: React.FC = () => {
 
     //港口
     const [PortContent, setPortContent] = useState<Port[]>([]);
+    
+    //装柜类型（海运用）
+    const [PackingTypes, setPackingTypes] = useState<any[]>([]);
 
     //出口国
     const [selectedCountry, setSelectedCountry] = useState<string | undefined>();
@@ -193,10 +196,39 @@ const ExecuteQingguanFileGenerate: React.FC = () => {
         }
         return totalJiazheng;
     };
+    
+    // 获取当前选择的港口/装柜类型的比率数据
+    const getCurrentRatioData = () => {
+        const selectedValue = executeForm.getFieldValue('port');
+        if (!selectedValue) return null;
+        
+        if (shippingType === 'air') {
+            const port = PortContent.find(p => p.port_name === selectedValue);
+            if (port?.expansion_factor) {
+                return {
+                    type: 'expansion',
+                    factor: parseFloat(port.expansion_factor.toString())
+                };
+            }
+        } else {
+            const packingType = PackingTypes.find(p => p.packing_type === selectedValue);
+            if (packingType?.check_data) {
+                return {
+                    type: 'check_data',
+                    data: packingType.check_data
+                };
+            }
+        }
+        return null;
+    };
     useEffect(() => {
         if (selectedCountry) {
             fetchAllProducts(selectedCountry, destination);
-            fetchAllPorts()
+            if (shippingType === 'air') {
+                fetchAllPorts();
+            } else {
+                fetchAllPackingTypes();
+            }
         }
         // console.log(CnUsdRate)
     }, [selectedCountry, shippingType, destination]);
@@ -230,26 +262,65 @@ const ExecuteQingguanFileGenerate: React.FC = () => {
     };
 
     const handlePortChange = (value: string) => {
-        const port = PortContent.find(p => p.port_name === value);
-        if (port) {
-            executeForm.setFieldsValue({
-                sender: port.sender_name,
-                receiver: port.receiver_name
-            });
+        if (shippingType === 'air') {
+            // 空运：处理港口选择
+            const port = PortContent.find(p => p.port_name === value);
+            if (port) {
+                executeForm.setFieldsValue({
+                    sender: port.sender_name,
+                    receiver: port.receiver_name
+                });
+            } else {
+                executeForm.setFieldsValue({
+                    sender: undefined,
+                    receiver: undefined
+                });
+            }
+            let qingguanTihuo = '';
+            if (port?.remarks) {
+                qingguanTihuo = port.remarks;
+            } else {
+                qingguanTihuo = '口岸选择不对';
+            }
+            executeForm.setFieldsValue({ special_qingguan_tihuo: qingguanTihuo });
         } else {
-            executeForm.setFieldsValue({
-                sender: undefined,
-                receiver: undefined
-            });
+            // 海运：处理装柜类型选择
+            const packingType = PackingTypes.find(p => p.packing_type === value);
+            if (packingType) {
+                executeForm.setFieldsValue({
+                    sender: packingType.sender_name,
+                    receiver: packingType.receiver_name
+                });
+                
+                // 从 check_data 中提取比率参数
+                if (packingType.check_data && Array.isArray(packingType.check_data)) {
+                    const valueWeightRatio = packingType.check_data.find((item: any) => item.name === '总货值/重量');
+                    const taxWeightRatio = packingType.check_data.find((item: any) => item.name === '预估整票税金CNY/Kg');
+                    
+                    if (valueWeightRatio && valueWeightRatio.enabled) {
+                        setOptimizationParams(prev => ({ ...prev, alpha: parseFloat(valueWeightRatio.value) }));
+                        optimizationForm.setFieldsValue({ alpha: parseFloat(valueWeightRatio.value) });
+                    }
+                    
+                    if (taxWeightRatio && taxWeightRatio.enabled) {
+                        setOptimizationParams(prev => ({ ...prev, beta_cny: parseFloat(taxWeightRatio.value) }));
+                        optimizationForm.setFieldsValue({ beta_cny: parseFloat(taxWeightRatio.value) });
+                    }
+                }
+            } else {
+                executeForm.setFieldsValue({
+                    sender: undefined,
+                    receiver: undefined
+                });
+            }
+            let qingguanTihuo = '';
+            if (packingType?.remarks) {
+                qingguanTihuo = packingType.remarks;
+            } else {
+                qingguanTihuo = '装柜类型选择不对';
+            }
+            executeForm.setFieldsValue({ special_qingguan_tihuo: qingguanTihuo });
         }
-        let qingguanTihuo = '';
-        if (port?.remarks) {
-            qingguanTihuo = port.remarks;
-
-        } else {
-            qingguanTihuo = '口岸选择不对';
-        }
-        executeForm.setFieldsValue({ special_qingguan_tihuo: qingguanTihuo });
         
         // 触发重新渲染优化参数显示
         setPortBasedRefresh(prev => prev + 1);
@@ -290,6 +361,11 @@ const ExecuteQingguanFileGenerate: React.FC = () => {
     const fetchAllPorts = async () => {
         const response = await axiosInstance.get(`${server_url}/qingguan/ports?country=${selectedCountry}`)
         setPortContent(response.data);
+    }
+    
+    const fetchAllPackingTypes = async () => {
+        const response = await axiosInstance.get(`${server_url}/qingguan/packing_types?country=${selectedCountry}`)
+        setPackingTypes(response.data);
     }
 
     const fetchShippersAndReceivers = async () => {
@@ -1180,25 +1256,33 @@ const ExecuteQingguanFileGenerate: React.FC = () => {
                         </Col>
                         <Col span={8}>
                             <Form.Item
-                                label="港口"
+                                label={shippingType === 'air' ? "港口" : "装柜类型"}
                                 name="port"
                                 rules={[{ required: false }]}
                             >
                                 <Select
                                     showSearch
                                     style={{ width: '100%' }}
-                                    placeholder="选择或搜索港口"
+                                    placeholder={shippingType === 'air' ? "选择或搜索港口" : "选择或搜索装柜类型"}
                                     optionFilterProp="children"
                                     filterOption={(input, option) =>
                                         typeof option?.children === 'string' && (option.children as string).toLowerCase().includes(input.toLowerCase())
                                     }
                                     onChange={handlePortChange}
                                 >
-                                    {PortContent.map((port) => (
-                                        <Select.Option key={port.id} value={port.port_name}>
-                                            {port.port_name}
-                                        </Select.Option>
-                                    ))}
+                                    {shippingType === 'air' ? (
+                                        PortContent.map((port) => (
+                                            <Select.Option key={port.id} value={port.port_name}>
+                                                {port.port_name}
+                                            </Select.Option>
+                                        ))
+                                    ) : (
+                                        PackingTypes.map((packingType) => (
+                                            <Select.Option key={packingType.id} value={packingType.packing_type}>
+                                                {packingType.packing_type}
+                                            </Select.Option>
+                                        ))
+                                    )}
                                 </Select>
                             </Form.Item>
                         </Col>
@@ -1535,9 +1619,36 @@ const ExecuteQingguanFileGenerate: React.FC = () => {
                                 marginBottom: 16
                             }}>
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                                    <h4 style={{ margin: 0, color: '#52c41a', fontSize: '14px' }}>
-                                        📊 比率控制参数
-                                    </h4>
+                                    <div>
+                                        <h4 style={{ margin: 0, color: '#52c41a', fontSize: '14px' }}>
+                                            📊 比率控制参数
+                                        </h4>
+                                        {(() => {
+                                            const selectedValue = executeForm.getFieldValue('port');
+                                            if (selectedValue) {
+                                                if (shippingType === 'air') {
+                                                    const port = PortContent.find(p => p.port_name === selectedValue);
+                                                    if (port?.expansion_factor) {
+                                                        return (
+                                                            <div style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>
+                                                                使用港口 {selectedValue} 的膨胀系数配置
+                                                            </div>
+                                                        );
+                                                    }
+                                                } else {
+                                                    const packingType = PackingTypes.find(p => p.packing_type === selectedValue);
+                                                    if (packingType?.check_data) {
+                                                        return (
+                                                            <div style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>
+                                                                使用装柜类型 {selectedValue} 的检查参数配置
+                                                            </div>
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                            return null;
+                                        })()}
+                                    </div>
                                     <Button
                                         type="text"
                                         size="small"
