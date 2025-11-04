@@ -96,7 +96,7 @@ const Vba: React.FC = () => {
         { 
             key: 'todo_card_task', 
             permissionKey: 'TodoComponent', 
-            tab: 'todo卡片', 
+            tab: 'todo卡片任务', 
             component: (
                 <div style={{ padding: '16px' }} key={`todo_card_task-${refreshKey}`}>
                     <Row gutter={[16, 16]}>

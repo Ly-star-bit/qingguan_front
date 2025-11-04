@@ -9,6 +9,9 @@ import axiosInstance from '@/utils/axiosInstance';
 import { jwtDecode } from "jwt-decode";
 import { PDFElement } from '@/components/PDF';
 import { type IPdfElement } from '@chainlit/react-client';
+import { getUserConveyTypePermissions } from '@/utils/permissionService';
+import { useSelector } from 'react-redux';
+import { RootState } from '@/store/store';
 
 const { RangePicker } = DatePicker;
 const { Search } = Input;
@@ -40,8 +43,10 @@ const PdfViewDownloadUserAll = () => {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const actionRef = useRef<ActionType>();
   const [isAdmin, setIsAdmin] = useState(false);
+  const userName = useSelector((state: RootState) => state.user.name);
 
-  const [transportMode, setTransportMode] = useState<'空运' | '海运'>('空运');
+  const [allowedConveyTypes, setAllowedConveyTypes] = useState<string[]>([]);
+  const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [searchRemarks, setsearchRemarks] = useState<string>('');
   const [searchAbnormal, setsearchAbnormal] = useState<string>('');
@@ -65,11 +70,31 @@ const PdfViewDownloadUserAll = () => {
     }
   }, []);
 
+  // 加载用户 convey_type 权限
   useEffect(() => {
-    setsearchConveyType(transportMode);
-    setSearchPort('');
-    actionRef.current?.reload();
-  }, [transportMode]);
+    const loadPermissions = async () => {
+      if (!userName) return;
+      
+      try {
+        const conveyTypes = await getUserConveyTypePermissions(userName);
+        setAllowedConveyTypes(conveyTypes);
+        
+        // 设置默认的运输方式为第一个可用的
+        if (conveyTypes.length > 0) {
+          setsearchConveyType(conveyTypes[0]);
+        }
+        
+        setPermissionsLoaded(true);
+      } catch (error) {
+        console.error('加载权限失败:', error);
+        message.error('加载权限失败');
+      }
+    };
+    
+    loadPermissions();
+  }, [userName]);
+
+
 
   const handleLockToggle = async (ids: React.Key[], lockStatus: boolean) => {
     try {
@@ -111,10 +136,12 @@ const PdfViewDownloadUserAll = () => {
       readonly:true
     },
     {
-      title: 'generation_time',
+      title: '生成时间',
       dataIndex: 'generation_time',
       key: 'generation_time',
       sorter: true,
+      width:100,
+
       render: (dom, entity) => {
         const text = entity.generation_time;
         return dayjs(text).format('YYYY-MM-DD HH:mm:ss');
@@ -124,6 +151,8 @@ const PdfViewDownloadUserAll = () => {
     },
     {
       title: '最新更新时间',
+        width:100,
+
       dataIndex: 'latest_update_time',
       key: 'latest_update_time',
       sorter: true,
@@ -268,7 +297,9 @@ const PdfViewDownloadUserAll = () => {
     },
   ];
 
-  const columns = transportMode === '海运' 
+  // 根据当前选择的 convey_type 决定是否显示海运特有列
+  const isSeaTransport = searchConveyType && ['海运', '整柜', '拼箱'].includes(searchConveyType);
+  const columns = isSeaTransport
     ? [...baseColumns, seaSpecificColumn, ...commonColumns]
     : [...baseColumns, ...commonColumns];
 
@@ -435,33 +466,13 @@ const PdfViewDownloadUserAll = () => {
   };
 
   const getConveyTypeOptions = () => {
-    if (transportMode === '空运') {
-      return [{ value: '空运', label: '空运' }];
-    } else {
-      return [
-        { value: '海运', label: '海运' },
-        { value: '整柜', label: '整柜' },
-        { value: '拼箱', label: '拼箱' }
-      ];
-    }
+    return allowedConveyTypes.map(type => ({ value: type, label: type }));
   };
 
   return (
     <div>
       <Card
-        title={
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Title level={4} style={{ margin: 0 }}><FilterOutlined /> 查询条件</Title>
-            <Segmented
-              options={[
-                { label: '空运', value: '空运' },
-                { label: '海运', value: '海运' }
-              ]}
-              value={transportMode}
-              onChange={(value) => setTransportMode(value as '空运' | '海运')}
-            />
-          </div>
-        }
+        title={<Title level={4} style={{ margin: 0 }}><FilterOutlined /> 查询条件</Title>}
         bordered={false}
         style={{ marginBottom: 16 }}
       >
@@ -592,7 +603,7 @@ const PdfViewDownloadUserAll = () => {
         }}
         headerTitle={
           <Space>
-            <Title level={4}>清关历史记录 - {transportMode}</Title>
+            <Title level={4}>清关历史记录</Title>
             {isAdmin && (
               <>
                 <Button 

@@ -305,10 +305,11 @@ const PdfViewDownload = () => {
       readonly:true
     },
     {
-      title: 'generation_time',
+      title: '生成时间',
       dataIndex: 'generation_time',
       key: 'generation_time',
       sorter: true,
+      width:100,
       render: (dom, entity) => {
         const text = entity.generation_time;
         return dayjs(text).format('YYYY-MM-DD HH:mm:ss');
@@ -321,6 +322,8 @@ const PdfViewDownload = () => {
       dataIndex: 'latest_update_time',
       key: 'latest_update_time',
       sorter: true,
+      width:100,
+
       render: (dom, entity) => {
         const text = entity.generation_time;
         const text2 = entity.latest_update_time;

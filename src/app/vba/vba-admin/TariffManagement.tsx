@@ -36,7 +36,7 @@ const TariffManagement: React.FC = () => {
 
     useEffect(() => {
         fetchAllTariffs();
-        fetchCategories();
+        
         fetchTariffTypes();
     }, []);
 
@@ -163,7 +163,6 @@ const TariffManagement: React.FC = () => {
                     setIsModalVisible(false);
                     tariffForm.resetFields();
                     fetchAllTariffs();
-                    fetchCategories();
                     fetchTariffTypes();
                 } catch (error: any) {
                     if (error.response?.status === 409) {
@@ -479,7 +478,7 @@ const TariffManagement: React.FC = () => {
                                     allowClear
                                     placeholder="请先选择起运地和目的地"
                                     options={[
-                                        { label: '*全部', value: '*全部' },
+                                        { label: '全部', value: '*' },
                                         ...categories.map(cat => ({ label: cat, value: cat }))
                                     ]}
                                     disabled={categories.length === 0}

@@ -76,7 +76,6 @@ const AirAllProductTable: React.FC = () => {
     const [isUpdating, setIsUpdating] = useState(false);
     const [categories, setCategories] = useState<string[]>([]);
     const [factories, setFactories] = useState<any[]>([]);
-    const [tariffTypes, setTariffTypes] = useState<string[]>([]);
     const [tariffData, setTariffData] = useState<any[]>([]);
 
     const userName = useSelector((state: RootState) => state.user.name);
@@ -96,25 +95,10 @@ const AirAllProductTable: React.FC = () => {
         }
     };
 
-    // 获取加征类型列表
-    const fetchTariffTypes = async () => {
+    // 获取所有加征数据
+    const fetchAllTariffs = async () => {
         try {
-            const response = await axiosInstance.get(`${server_url}/qingguan/tariff/tariff-types/list`);
-            setTariffTypes(response.data || []);
-        } catch (error) {
-            console.log('获取加征类型失败');
-        }
-    };
-
-    // 获取当前路线的完整加征数据
-    const fetchTariffData = async (start: string, dest: string, category: string) => {
-        try {
-            const response = await axiosInstance.post(`${server_url}/qingguan/tariff/query`, {
-                start_land: start || null,
-                destination: dest || null,
-                category: category || null,
-                tariff_type: null
-            });
+            const response = await axiosInstance.get(`${server_url}/qingguan/tariff/list/all`);
             setTariffData(response.data || []);
         } catch (error) {
             console.log('获取加征数据失败');
@@ -122,10 +106,10 @@ const AirAllProductTable: React.FC = () => {
         }
     };
 
-    // 在组件加载时获取工厂列表和加征类型
+    // 在组件加载时获取工厂列表和加征数据
     useEffect(() => {
         fetchFactories();
-        fetchTariffTypes();
+        fetchAllTariffs();
     }, []);
 
     // 路线选择相关状态
@@ -451,9 +435,6 @@ const AirAllProductTable: React.FC = () => {
         productForm.resetFields();
         setEditingProduct(record);
         
-        // 获取当前路线和类别的加征数据
-        await fetchTariffData(startland, destination, record.类别 || '');
-        
         setTimeout(() => {
             const jiazhengArray = record.加征 ? 
                 Object.entries(record.加征).map(([name, value]) => ({
@@ -481,9 +462,6 @@ const AirAllProductTable: React.FC = () => {
     const handleAdd = async () => {
         setEditingProduct(null);
         productForm.resetFields();
-        
-        // 获取当前路线的加征数据
-        await fetchTariffData(startland, destination, '');
         
         // 设置默认值
         productForm.setFieldsValue({
@@ -1011,8 +989,21 @@ const AirAllProductTable: React.FC = () => {
                             </Form.Item>
                         </Col>
                         <Col span={12}>
-                            <Form.Item label="Duty(%)" name="Duty">
-                                <Input />
+                            <Form.Item 
+                                label="Duty" 
+                                name="Duty"
+                                rules={[
+                                    { required: false },
+                                    { type: 'number', min: 0, max: 1, message: '请输入0-1之间的小数' }
+                                ]}
+                            >
+                                <InputNumber 
+                                    min={0} 
+                                    max={1} 
+                                    step={0.01} 
+                                    style={{ width: '100%' }}
+                                    placeholder="请输入0-1的小数（如0.15表示15%）"
+                                />
                             </Form.Item>
                         </Col>
                     </Row>
@@ -1035,28 +1026,43 @@ const AirAllProductTable: React.FC = () => {
                                             <Form.Item
                                                 {...restField}
                                                 name={[name, 'name']}
-                                                rules={[{ required: true, message: '请选择或输入加征名称' }]}
+                                                rules={[{ required: true, message: '请选择加征类型' }]}
                                                 style={{ margin: 0, flex: 1 }}
                                             >
-                                                <AutoComplete
-                                                    placeholder="请选择或输入加征名称"
-                                                    options={tariffTypes.map(type => ({ label: type, value: type }))}
-                                                    filterOption={(inputValue, option) =>
-                                                        (option?.label ?? '').toString().toLowerCase().includes(inputValue.toLowerCase())
-                                                    }
+                                                <Select
+                                                    showSearch
+                                                    placeholder="请选择加征类型"
                                                     allowClear
-                                                    onChange={(value) => {
-                                                        // 查找选中的加征类型对应的税率
-                                                        const selectedTariff = tariffData.find(
-                                                            (t: any) => t.tariff_type === value
-                                                        );
-                                                        if (selectedTariff) {
-                                                            // 自动填充税率值（小数格式，如0.20）
+                                                    filterOption={(input, option) =>
+                                                        (option?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())
+                                                    }
+                                                    options={tariffData
+                                                        // .filter((t: any) => {
+                                                        //     const currentCategory = productForm.getFieldValue('类别');
+                                                        //     const matchRoute = t.start_land?.toUpperCase() === startland?.toUpperCase() && 
+                                                        //                      t.destination?.toUpperCase() === destination?.toUpperCase();
+                                                            
+                                                        //     if (!currentCategory) {
+                                                        //         return matchRoute;
+                                                        //     }
+                                                            
+                                                        //     const categories = Array.isArray(t.category) ? t.category : [t.category];
+                                                        //     const matchCategory = categories.includes('*') || categories.includes(currentCategory);
+                                                            
+                                                        //     return matchRoute && matchCategory;
+                                                        // })
+                                                        .map((t: any) => ({
+                                                            label: `加征_${t.tariff_type}`,
+                                                            value: `加征_${t.tariff_type}`,
+                                                            tariff_rate: t.tariff_rate
+                                                        }))
+                                                    }
+                                                    onChange={(value, option: any) => {
+                                                        if (option) {
                                                             const currentValues = productForm.getFieldValue('加征') || [];
                                                             currentValues[name] = {
-                                                                ...currentValues[name],
-                                                                name: `加征_${value}`,
-                                                                value: selectedTariff.tariff_rate,
+                                                                name: value,
+                                                                value: option.tariff_rate
                                                             };
                                                             productForm.setFieldsValue({ 加征: currentValues });
                                                         }
@@ -1066,10 +1072,19 @@ const AirAllProductTable: React.FC = () => {
                                             <Form.Item
                                                 {...restField}
                                                 name={[name, 'value']}
-                                                rules={[{ required: true, message: '请输入加征值' }]}
+                                                rules={[
+                                                    { required: true, message: '请输入加征值' },
+                                                    { type: 'number', min: 0, max: 1, message: '请输入0-1之间的小数' }
+                                                ]}
                                                 style={{ margin: 0, flex: 1 }}
                                             >
-                                                <Input placeholder="加征值" />
+                                                <InputNumber 
+                                                    min={0} 
+                                                    max={1} 
+                                                    step={0.01} 
+                                                    style={{ width: '100%' }}
+                                                    placeholder="请输入0-1的小数（如0.20表示20%）"
+                                                />
                                             </Form.Item>
                                             <MinusCircleOutlined
                                                 onClick={() => remove(name)}

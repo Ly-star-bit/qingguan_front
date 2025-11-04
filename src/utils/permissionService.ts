@@ -70,6 +70,16 @@ export const getUserRoutePermissions = async (username: string): Promise<{
   sea: RoutePermission[];
 }> => {
   try {
+    // 所有可能的路线组合（当 v3 为空数组时使用）
+    const allRoutes: RoutePermission[] = [
+      { startland: 'China', destination: 'America' },
+      { startland: 'China', destination: 'Canada' },
+      { startland: 'China', destination: 'Vietnam' },
+      { startland: 'Vietnam', destination: 'America' },
+      { startland: 'Vietnam', destination: 'Canada' },
+      { startland: 'Vietnam', destination: 'Vietnam' },
+    ];
+
     // 查询空运权限
     const airFilters: FilterCondition[] = [
       { field: "v0", value: username, operator: "eq" },
@@ -91,25 +101,49 @@ export const getUserRoutePermissions = async (username: string): Promise<{
 
     // 解析空运权限
     const airPermissions: RoutePermission[] = [];
+    let hasAirEmptyPermission = false;
     airResponse.data.forEach(policy => {
-      if (policy.v3 && policy.v4 === 'allow') {
-        const routes = parseRoutePermissions(policy.v3);
-        airPermissions.push(...routes);
+      // v4 为空或为 'allow' 时才处理
+      if (!policy.v4 || policy.v4 === 'allow') {
+        if (!policy.v3 || policy.v3.trim() === '' || policy.v3 === '[]') {
+          // v3 为空或空数组，表示拥有所有权限
+          hasAirEmptyPermission = true;
+        } else {
+          const routes = parseRoutePermissions(policy.v3);
+          if (routes.length === 0) {
+            // 如果解析后是空数组，也表示所有权限
+            hasAirEmptyPermission = true;
+          } else {
+            airPermissions.push(...routes);
+          }
+        }
       }
     });
 
     // 解析海运权限
     const seaPermissions: RoutePermission[] = [];
+    let hasSeaEmptyPermission = false;
     seaResponse.data.forEach(policy => {
-      if (policy.v3 && policy.v4 === 'allow') {
-        const routes = parseRoutePermissions(policy.v3);
-        seaPermissions.push(...routes);
+      // v4 为空或为 'allow' 时才处理
+      if (!policy.v4 || policy.v4 === 'allow') {
+        if (!policy.v3 || policy.v3.trim() === '' || policy.v3 === '[]') {
+          // v3 为空或空数组，表示拥有所有权限
+          hasSeaEmptyPermission = true;
+        } else {
+          const routes = parseRoutePermissions(policy.v3);
+          if (routes.length === 0) {
+            // 如果解析后是空数组，也表示所有权限
+            hasSeaEmptyPermission = true;
+          } else {
+            seaPermissions.push(...routes);
+          }
+        }
       }
     });
 
     return {
-      air: airPermissions,
-      sea: seaPermissions
+      air: hasAirEmptyPermission ? allRoutes : airPermissions,
+      sea: hasSeaEmptyPermission ? allRoutes : seaPermissions
     };
   } catch (error) {
     console.error('获取用户路由权限失败:', error);
@@ -147,4 +181,66 @@ export const hasRoutePermission = (
   return permissions.some(
     p => p.startland === startland && p.destination === destination
   );
+};
+
+/**
+ * 获取用户的 convey_type 权限
+ * 返回用户可以访问的运输方式列表
+ */
+export const getUserConveyTypePermissions = async (username: string): Promise<string[]> => {
+  try {
+    // 所有可能的运输方式（当 v3 为空数组时使用）
+    const allConveyTypes = ['空运', '海运', '整柜', '拼箱'];
+
+    // 查询 convey_type 权限
+    const filters: FilterCondition[] = [
+      { field: "v0", value: username, operator: "eq" },
+      { field: "v1", value: "/qingguan/cumstom_clear_history_summary/", operator: "eq" }
+    ];
+
+    const response = await filterPolicies(filters);
+
+    // 解析权限
+    const conveyTypes: string[] = [];
+    let hasEmptyPermission = false;
+
+    response.data.forEach(policy => {
+      // v4 为空或为 'allow' 时才处理
+      if (!policy.v4 || policy.v4 === 'allow') {
+        if (!policy.v3 || policy.v3.trim() === '' || policy.v3 === '[]') {
+          // v3 为空或空数组，表示拥有所有权限
+          hasEmptyPermission = true;
+        } else {
+          try {
+            const parsed = JSON.parse(policy.v3);
+            if (Array.isArray(parsed)) {
+              // 处理对象数组 [{convey_type: '空运'}] 或字符串数组 ['空运']
+              parsed.forEach(item => {
+                if (typeof item === 'object' && item !== null && 'convey_type' in item) {
+                  conveyTypes.push(item.convey_type);
+                } else if (typeof item === 'string') {
+                  conveyTypes.push(item);
+                }
+              });
+            } else if (typeof parsed === 'string') {
+              conveyTypes.push(parsed);
+            }
+          } catch (e) {
+            console.error('解析 convey_type 权限失败:', e);
+          }
+        }
+      }
+    });
+
+    // 如果有空权限或解析后为空数组，返回所有运输方式
+    if (hasEmptyPermission || (response.data.length > 0 && conveyTypes.length === 0)) {
+      return allConveyTypes;
+    }
+    console.log('conveyTypes',conveyTypes)
+    // 去重并返回
+    return Array.from(new Set(conveyTypes));
+  } catch (error) {
+    console.error('获取 convey_type 权限失败:', error);
+    return [];
+  }
 };

@@ -130,6 +130,9 @@ const ExecuteQingguanFileGenerate: React.FC = () => {
     //出口国
     const [selectedCountry, setSelectedCountry] = useState<string | undefined>();
 
+    //目的国
+    const [destination, setDestination] = useState<string>('America');
+
     //快递类型
     const [shippingType, setShippingType] = useState<'air' | 'sea'>('air');
 
@@ -192,21 +195,22 @@ const ExecuteQingguanFileGenerate: React.FC = () => {
     };
     useEffect(() => {
         if (selectedCountry) {
-            fetchAllProducts(selectedCountry);
+            fetchAllProducts(selectedCountry, destination);
             fetchAllPorts()
         }
         // console.log(CnUsdRate)
-    }, [selectedCountry, shippingType]);
+    }, [selectedCountry, shippingType, destination]);
 
     useEffect(() => {
         fetchExchangeRate();
         fetchShippersAndReceivers();
     }, []); // Add shipperPageSize as dependency
     useEffect(() => {
-        if (CnUsdRate !== undefined) {
-            executeForm.setFieldsValue({ rate_cn_us: CnUsdRate });
+        if (CnUsdRate !== undefined && CnUsdRate !== null) {
+            setOptimizationParams(prev => ({ ...prev, exchange_rate: CnUsdRate }));
+            optimizationForm.setFieldsValue({ exchange_rate: CnUsdRate });
         }
-    }, [CnUsdRate, executeForm]);
+    }, [CnUsdRate, optimizationForm]);
 
 
 
@@ -271,14 +275,16 @@ const ExecuteQingguanFileGenerate: React.FC = () => {
     const fetchExchangeRate = async () => {
         try {
             const response = await axiosInstance.get(`${server_url}/qingguan/api/exchange-rate`);
-            setCnUsdRate(response.data.USDCNY)
+            setCnUsdRate(response.data.USDCNY);
+            setOptimizationParams(prev => ({ ...prev, exchange_rate: response.data.USDCNY }));
+            optimizationForm.setFieldsValue({ exchange_rate: response.data.USDCNY });
         } catch (error) {
             console.error('Error fetching exchange rate:', error);
         }
     };
-    const fetchAllProducts = async (country: string = 'China') => {
+    const fetchAllProducts = async (country: string = 'China', dest: string = 'America') => {
         const endpoint = API_ENDPOINTS[shippingType];
-        const response = await axiosInstance.get(`${server_url}${endpoint}?get_all=true&username=${userName}&zishui=false&startland=${country}&destination=America&is_hidden=false`);
+        const response = await axiosInstance.get(`${server_url}${endpoint}?get_all=true&username=${userName}&zishui=false&startland=${country}&destination=${dest}&is_hidden=false`);
         setAllProducts(response.data.items);
     }
     const fetchAllPorts = async () => {
@@ -474,7 +480,7 @@ const ExecuteQingguanFileGenerate: React.FC = () => {
         const currentTaxPerKg = (
             totalAllYuguTax /
             Number(executeForm.getFieldValue('weight')) *
-            Number(CnUsdRate || executeForm.getFieldValue('rate_cn_us'))
+            Number(optimizationParams.exchange_rate)
         ).toFixed(2);
 
         // 重新获取最新的港口数据
@@ -668,7 +674,7 @@ const ExecuteQingguanFileGenerate: React.FC = () => {
             predict_tax_price: (
                 useTotals.totalAllYuguTax /
                 Number(values.weight) *
-                Number(CnUsdRate || executeForm.getFieldValue('rate_cn_us'))
+                Number(optimizationParams.exchange_rate)
             ).toFixed(2),
             shipper_name: values.sender,
             receiver_name: values.receiver,
@@ -832,8 +838,8 @@ const ExecuteQingguanFileGenerate: React.FC = () => {
         setTotalAllYuguTax(total + minTotal);
         single_weight_calculate(Number(formValues.weight), items);
 
-        if (formValues.rate_cn_us) {
-            setCnUsdRate(formValues.rate_cn_us);
+        if (formValues.exchange_rate) {
+            setOptimizationParams(prev => ({ ...prev, exchange_rate: formValues.exchange_rate }));
         }
 
         if (formValues.fda_report) {
@@ -1023,7 +1029,6 @@ const ExecuteQingguanFileGenerate: React.FC = () => {
             setSelectedProducts([]); // 清空选中产品
             setOptimizationResult(null); // 清空优化结果
             setOptimizationHistory([]); // 清空优化历史
-            executeForm.setFieldsValue({ rate_cn_us: CnUsdRate });
             setTotalYuguTax(0);
             setTotalAllYuguTax(0);
             setTotalCarrierPrice(0);
@@ -1069,7 +1074,7 @@ const ExecuteQingguanFileGenerate: React.FC = () => {
             const newHistoryEntry: Omit<SubmissionHistoryEntry, '_id'> = {
                 formValues: {
                     ...formValues,
-                    rate_cn_us: CnUsdRate || executeForm.getFieldValue('rate_cn_us'),
+                    exchange_rate: optimizationParams.exchange_rate,
                     totalYuguTax: useTotals.totalYuguTax,
                     totalAllYuguTax: useTotals.totalAllYuguTax,
                     totalCarrierPrice: useTotals.totalCarrierPrice
@@ -1154,7 +1159,26 @@ const ExecuteQingguanFileGenerate: React.FC = () => {
                                 </Select>
                             </Form.Item>
                         </Col>
-                        <Col span={16}>
+                        <Col span={8}>
+                            <Form.Item
+                                label="目的国"
+                                name="destination"
+                                rules={[{ required: true, message: '请选择目的国' }]}
+                                initialValue="America"
+                            >
+                                <Select
+                                    style={{ width: '100%' }}
+                                    placeholder="请选择目的国"
+                                    onChange={(value) => {
+                                        setDestination(value);
+                                        executeForm.setFieldsValue({ destination: value });
+                                    }}
+                                >
+                                    <Select.Option value="America">美国</Select.Option>
+                                </Select>
+                            </Form.Item>
+                        </Col>
+                        <Col span={8}>
                             <Form.Item
                                 label="港口"
                                 name="port"
@@ -1181,7 +1205,7 @@ const ExecuteQingguanFileGenerate: React.FC = () => {
                     </Row>
 
                     <Row gutter={16}>
-                        <Col span={24}>
+                        <Col span={16}>
                             <Form.Item
                                 label="无特殊情况：清关+提货"
                                 name="special_qingguan_tihuo"
@@ -1254,7 +1278,7 @@ const ExecuteQingguanFileGenerate: React.FC = () => {
                     </Row>
 
                     <Row gutter={16}>
-                        <Col span={12}>
+                        <Col span={24}>
                             <Form.Item
                                 label="主单号"
                                 name="orderNumber"
@@ -1296,21 +1320,7 @@ const ExecuteQingguanFileGenerate: React.FC = () => {
                                 />
                             </Form.Item>
                         </Col>
-                        <Col span={12}>
-                            <Form.Item
-                                label="人民币美金汇率"
-                                name="rate_cn_us"
-                            >
-                                <Input type='number'
-                                    value={CnUsdRate !== null ? CnUsdRate.toString() : executeForm.getFieldValue('rate_cn_us')}
-                                    onChange={(e) => {
-                                        const value = e.target.value ? parseFloat(e.target.value) : null;
-                                        setCnUsdRate(value);
-                                        executeForm.setFieldsValue({ rate_cn_us: value });
-                                    }}
-                                />
-                            </Form.Item>
-                        </Col>
+
                     </Row>
 
                     <Row gutter={16}>
