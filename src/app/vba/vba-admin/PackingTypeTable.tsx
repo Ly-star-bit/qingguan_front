@@ -132,26 +132,31 @@ const PackingTypeTable: React.FC = () => {
       title: 'ID',
       dataIndex: 'id',
       key: 'id',
+      width: 80,
     },
     {
       title: '装箱类型',
       dataIndex: 'packing_type',
       key: 'packing_type',
+      width: 150,
     },
     {
       title: 'sender国家',
       dataIndex: 'country',
       key: 'country',
+      width: 120,
     },
     {
       title: '发件人',
       dataIndex: 'sender_name',
       key: 'sender_name',
+      width: 200,
     },
     {
       title: '收件人',
       dataIndex: 'receiver_name',
       key: 'receiver_name',
+      width: 200,
     },
     {
       title: '检测数据',
@@ -207,6 +212,8 @@ const PackingTypeTable: React.FC = () => {
     {
       title: '操作',
       key: 'action',
+      width: 150,
+      fixed: 'right',
       render: (text:any, record:any) => (
         <>
           <Button type="link" onClick={() => handleEdit(record)}>编辑</Button>
@@ -231,6 +238,7 @@ const PackingTypeTable: React.FC = () => {
         request={fetchPackingTypes}
         rowKey="id"
         search={false}
+        scroll={{ x: 'max-content' }}
         toolBarRender={() => [
           <Button key='button' type="primary" onClick={handleAdd}>新增装箱类型</Button>,
         ]}

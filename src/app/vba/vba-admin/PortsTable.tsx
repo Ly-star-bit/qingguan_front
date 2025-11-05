@@ -126,35 +126,41 @@ const PortsPage: React.FC = () => {
   };
 
   const columns: ProColumns<Port>[] = [
-    {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
-    },
+    // {
+    //   title: 'ID',
+    //   dataIndex: 'id',
+    //   key: 'id',
+    //   width: 80,
+    // },
     {
       title: 'serder国家',
       dataIndex: 'country',
       key: 'country',
+      width: 120,
     },
     {
       title: 'Port Name',
       dataIndex: 'port_name',
       key: 'port_name',
+      width: 150,
     },
     {
       title: 'Sender Name',
       dataIndex: 'sender_name',
       key: 'sender_name',
+      width: 200,
     },
     {
       title: 'Receiver Name',
       dataIndex: 'receiver_name',
       key: 'receiver_name',
+      width: 200,
     },
     {
       title: '膨胀系数',
       dataIndex: 'expansion_factor',
       key: 'expansion_factor',
+      width: 120,
       render: (_: any, record: Port) => {
         const factor = record.expansion_factor;
         return factor != null ? Number(factor).toFixed(2) : '-';
@@ -214,6 +220,8 @@ const PortsPage: React.FC = () => {
     {
       title: 'Action',
       key: 'action',
+      width: 150,
+      fixed: 'right',
       render: (text:any, record:any) => (
         <>
           <Button type="link" onClick={() => handleEdit(record)}>Edit</Button>
@@ -246,6 +254,7 @@ const PortsPage: React.FC = () => {
         rowKey="id"
         actionRef={actionRef}
         search={false}
+        scroll={{ x: 'max-content' }}
         toolBarRender={() => [
           <Button key='button' type="primary" onClick={handleAdd}>New Port</Button>,
         ]}

@@ -208,9 +208,9 @@ const AirAllProductTable: React.FC = () => {
             中文品名: values.中文品名 ?? '',
             英文品名: values.英文品名 ?? '',
             HS_CODE: values.HS_CODE ?? '',
-            Duty: values.Duty ?? '',
+            Duty: values.Duty ? Number(values.Duty) / 100 : '',
             加征: Array.isArray(values.加征) ? values.加征.reduce((obj: any, item: any) => {
-                obj[item.name] = item.value;
+                obj[item.name] = Number(item.value) / 100;
                 return obj;
             }, {}) : {},
             豁免代码: values.豁免代码 ?? '',
@@ -439,11 +439,12 @@ const AirAllProductTable: React.FC = () => {
             const jiazhengArray = record.加征 ? 
                 Object.entries(record.加征).map(([name, value]) => ({
                     name,
-                    value
+                    value: Number((Number(value) * 100).toFixed(10))
                 })) : [];
 
             productForm.setFieldsValue({
                 ...record,
+                Duty: record.Duty ? Number((Number(record.Duty) * 100).toFixed(10)) : undefined,
                 类别: record.类别 || '',
                 startland: startland,
                 destination: destination,
@@ -994,15 +995,16 @@ const AirAllProductTable: React.FC = () => {
                                 name="Duty"
                                 rules={[
                                     { required: false },
-                                    { type: 'number', min: 0, max: 1, message: '请输入0-1之间的小数' }
+                                    { type: 'number', min: 0, max: 100, message: '请输入0-100之间的数值' }
                                 ]}
                             >
                                 <InputNumber 
                                     min={0} 
-                                    max={1} 
+                                    max={100} 
                                     step={0.01} 
                                     style={{ width: '100%' }}
-                                    placeholder="请输入0-1的小数（如0.15表示15%）"
+                                    placeholder="请输入百分比（如20表示20%）"
+                                    addonAfter="%"
                                 />
                             </Form.Item>
                         </Col>
@@ -1062,7 +1064,7 @@ const AirAllProductTable: React.FC = () => {
                                                             const currentValues = productForm.getFieldValue('加征') || [];
                                                             currentValues[name] = {
                                                                 name: value,
-                                                                value: option.tariff_rate
+                                                                value: Number((Number(option.tariff_rate) * 100).toFixed(10))
                                                             };
                                                             productForm.setFieldsValue({ 加征: currentValues });
                                                         }
@@ -1074,16 +1076,17 @@ const AirAllProductTable: React.FC = () => {
                                                 name={[name, 'value']}
                                                 rules={[
                                                     { required: true, message: '请输入加征值' },
-                                                    { type: 'number', min: 0, max: 1, message: '请输入0-1之间的小数' }
+                                                    { type: 'number', min: 0, max: 100, message: '请输入0-100之间的数值' }
                                                 ]}
                                                 style={{ margin: 0, flex: 1 }}
                                             >
                                                 <InputNumber 
                                                     min={0} 
-                                                    max={1} 
+                                                    max={100} 
                                                     step={0.01} 
                                                     style={{ width: '100%' }}
-                                                    placeholder="请输入0-1的小数（如0.20表示20%）"
+                                                    placeholder="请输入百分比（如20表示20%）"
+                                                    addonAfter="%"
                                                 />
                                             </Form.Item>
                                             <MinusCircleOutlined
