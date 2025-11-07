@@ -114,10 +114,12 @@ const Vba: React.FC = () => {
                                             { label: '广州航捷', value: '广州航捷' },
                                         ],
                                         defaultValue: '上海平政'
-                                    }
+                                    },
+                                    
                                 }}
                                 enableFileUpload={true}
                                 enableApiParams={true}
+                                columnNames={["日期", "客户", "金额", "备注"]}
                                 downloadBaseUrl="/fentan/"
                             />
                         </Col>

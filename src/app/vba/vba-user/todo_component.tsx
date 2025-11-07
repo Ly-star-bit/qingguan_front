@@ -6,6 +6,7 @@ import { CheckCircleOutlined, CloseCircleOutlined, DownloadOutlined, EyeOutlined
 import axiosInstance from '@/utils/axiosInstance';
 import { SSEClient } from '@/utils/sseClient';
 import type { UploadFile } from 'antd/es/upload/interface';
+import { JsonEditor } from 'json-edit-react';
 
 const { Title, Text } = Typography;
 
@@ -29,6 +30,17 @@ interface ApiParam {
   value: string;
 }
 
+interface TableColumn {
+  title: string;
+  dataIndex: string;
+  key: string;
+}
+
+interface TableRow {
+  key: string;
+  [key: string]: any;
+}
+
 interface ApiParamOption {
   label: string;
   value: string;
@@ -48,6 +60,7 @@ interface TodoComponentProps {
   title?: string;
   enableFileUpload?: boolean;
   enableApiParams?: boolean;
+  columnNames?: string[];
   downloadBaseUrl?: string;
 }
 
@@ -57,6 +70,7 @@ const TodoComponent: React.FC<TodoComponentProps> = ({
   title = "任务执行组件",
   enableFileUpload = false,
   enableApiParams = false,
+  columnNames = '',
   downloadBaseUrl = '/api/download'
 }) => {
   const [isExecuting, setIsExecuting] = useState(false);
@@ -72,9 +86,18 @@ const TodoComponent: React.FC<TodoComponentProps> = ({
   const [uploadFile, setUploadFile] = useState<UploadFile | null>(null);
   const [dynamicApiParams, setDynamicApiParams] = useState<ApiParam[]>([]);
   const [configuredParams, setConfiguredParams] = useState<Record<string, string>>({});
+  const [isJsonModalVisible, setIsJsonModalVisible] = useState(false);
+  const [jsonParams, setJsonParams] = useState<Record<string, any>>({});
   const [form] = Form.useForm();
+  
+  // 表格相关状态
+  const [tableColumnNames, setTableColumnNames] = useState<string>('');
+  const [isTableModalVisible, setIsTableModalVisible] = useState(false);
+  const [tableColumns, setTableColumns] = useState<TableColumn[]>([]);
+  const [tableData, setTableData] = useState<TableRow[]>([]);
+  const [tableForm] = Form.useForm();
 
-  // 初始化配置参数的默认值
+  // 初始化配置参数的默认值和表格列
   useEffect(() => {
     if (apiParams) {
       const initialParams: Record<string, string> = {};
@@ -87,7 +110,19 @@ const TodoComponent: React.FC<TodoComponentProps> = ({
       });
       setConfiguredParams(initialParams);
     }
-  }, [apiParams]);
+    
+    // 初始化表格列（如果提供了列名）
+    if (columnNames && Array.isArray(columnNames) && columnNames.length > 0) {
+      const columnNamesString = columnNames.join(',');
+      setTableColumnNames(columnNamesString);
+      const cols: TableColumn[] = columnNames.map((name, index) => ({
+        title: name,
+        dataIndex: name,
+        key: name
+      }));
+      setTableColumns(cols);
+    }
+  }, [apiParams, columnNames]);
 
   // Clean up EventSource connection on component unmount
   useEffect(() => {
@@ -101,7 +136,7 @@ const TodoComponent: React.FC<TodoComponentProps> = ({
 
   const handleExecute = () => {
     // 如果启用了配置选项，先显示配置弹窗
-    if (enableFileUpload || enableApiParams) {
+    if (enableFileUpload || enableApiParams || (columnNames && Array.isArray(columnNames) && columnNames.length > 0)) {
       setIsConfigModalVisible(true);
       return;
     }
@@ -153,6 +188,12 @@ const TodoComponent: React.FC<TodoComponentProps> = ({
           mergedParams[param.key] = param.value;
         }
       });
+    }
+    
+    // 添加表格数据（如果有）
+    if (tableData.length > 0) {
+      mergedParams['table_data'] = JSON.stringify(tableData);
+      mergedParams['table_columns'] = JSON.stringify(tableColumns.map(col => col.title));
     }
     
     // Build URL
@@ -406,6 +447,7 @@ const TodoComponent: React.FC<TodoComponentProps> = ({
   const resetConfig = () => {
     setUploadFile(null);
     setDynamicApiParams([]);
+    setJsonParams({});
     // 重置为默认值
     if (apiParams) {
       const initialParams: Record<string, string> = {};
@@ -421,12 +463,110 @@ const TodoComponent: React.FC<TodoComponentProps> = ({
     form.resetFields();
   };
 
+  // 打开JSON参数编辑弹窗
+  const openJsonModal = () => {
+    try {
+      // 将现有的动态参数转换为对象
+      const paramsObj: Record<string, string> = {};
+      dynamicApiParams.forEach(param => {
+        if (param.key && param.value) {
+          paramsObj[param.key] = param.value;
+        }
+      });
+      setJsonParams(paramsObj);
+    } catch (error) {
+      console.error('Error converting params to JSON:', error);
+      setJsonParams({});
+    }
+    setIsJsonModalVisible(true);
+  };
+
+  // 保存JSON参数
+  const saveJsonParams = () => {
+    try {
+      // JsonEditor 直接返回对象
+      if (typeof jsonParams === 'object' && jsonParams !== null && !Array.isArray(jsonParams)) {
+        const newParams: ApiParam[] = Object.entries(jsonParams).map(([key, value]) => ({
+          key: key,
+          value: String(value)
+        }));
+        setDynamicApiParams(newParams);
+        setIsJsonModalVisible(false);
+        message.success('JSON参数已保存');
+      } else {
+        message.error('JSON格式不正确，请确保顶层是一个对象');
+      }
+    } catch (error) {
+      console.error('Error processing JSON:', error);
+      message.error('JSON格式不正确');
+    }
+  };
+
   // 更新配置参数
   const updateConfiguredParam = (key: string, value: string) => {
     setConfiguredParams(prev => ({
       ...prev,
       [key]: value
     }));
+  };
+
+  // 处理列名变化 - 仅在 columnNames 未通过 props 提供时使用
+  const handleColumnNamesChange = (value: string) => {
+    setTableColumnNames(value);
+    if (value.trim()) {
+      const names = value.split(',').map(name => name.trim()).filter(name => name);
+      const cols: TableColumn[] = names.map((name, index) => ({
+        title: name,
+        dataIndex: name,
+        key: name
+      }));
+      setTableColumns(cols);
+      setTableData([]);
+    } else {
+      setTableColumns([]);
+      setTableData([]);
+    }
+  };
+
+  // 打开表格编辑弹窗
+  const openTableModal = () => {
+    if ((!tableColumnNames.trim() && !(columnNames && Array.isArray(columnNames) && columnNames.length > 0)) || tableColumns.length === 0) {
+      message.warning('请先设置列名');
+      return;
+    }
+    setIsTableModalVisible(true);
+  };
+
+  // 添加表格行
+  const addTableRow = () => {
+    const newRow: TableRow = {
+      key: `row_${Date.now()}`
+    };
+    tableColumns.forEach(col => {
+      newRow[col.dataIndex] = '';
+    });
+    setTableData([...tableData, newRow]);
+  };
+
+  // 删除表格行
+  const deleteTableRow = (key: string) => {
+    setTableData(tableData.filter(row => row.key !== key));
+  };
+
+  // 更新表格单元格数据
+  const updateTableCell = (rowKey: string, columnKey: string, value: any) => {
+    setTableData(prev => prev.map(row => {
+      if (row.key === rowKey) {
+        return { ...row, [columnKey]: value };
+      }
+      return row;
+    }));
+  };
+
+  // 保存表格数据
+  const saveTableData = () => {
+    setIsTableModalVisible(false);
+    message.success('表格数据已保存');
   };
 
   const viewResult = (step: TaskStep) => {
@@ -1090,61 +1230,211 @@ const TodoComponent: React.FC<TodoComponentProps> = ({
                     </div>
                     <Button
                       type="dashed"
-                      icon={<PlusOutlined />}
-                      onClick={addApiParam}
+                      icon={<SettingOutlined />}
+                      onClick={openJsonModal}
                       size="small"
                     >
-                      添加参数
+                      JSON编辑
                     </Button>
                   </div>
                 </div>
                 
-                {dynamicApiParams.map((param, index) => (
-                  <Row key={index} gutter={8} style={{ marginBottom: '8px' }}>
-                    <Col span={10}>
-                      <Input
-                        placeholder="参数名"
-                        value={param.key}
-                        onChange={(e) => updateApiParam(index, 'key', e.target.value)}
-                      />
-                    </Col>
-                    <Col span={10}>
-                      <Input
-                        placeholder="参数值"
-                        value={param.value}
-                        onChange={(e) => updateApiParam(index, 'value', e.target.value)}
-                      />
-                    </Col>
-                    <Col span={4}>
-                      <Button
-                        icon={<DeleteOutlined />}
-                        onClick={() => removeApiParam(index)}
-                        danger
-                        size="small"
-                        style={{ width: '100%' }}
-                      />
-                    </Col>
-                  </Row>
-                ))}
-                
-                {dynamicApiParams.length === 0 && (
+               
+              </>
+            )}
+
+            {/* 表格数据输入 */}
+            {columnNames && Array.isArray(columnNames) && columnNames.length > 0 && (
+              <>
+                <div style={{ marginBottom: '16px' }}>
                   <div style={{ 
-                    textAlign: 'center', 
-                    color: '#8c8c8c', 
-                    padding: '20px',
-                    border: '1px dashed #d9d9d9',
-                    borderRadius: '6px',
-                    background: '#fafafa'
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between',
+                    marginBottom: '12px'
                   }}>
-                    暂无参数，点击"添加参数"按钮添加
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <PlusOutlined style={{ color: '#1890ff', fontSize: '16px' }} />
+                      <span style={{ fontWeight: '600', color: '#262626', fontSize: '15px' }}>表格数据</span>
+                    </div>
+                    <Space>
+                      <Button
+                        type="dashed"
+                        icon={<SettingOutlined />}
+                        onClick={() => openTableModal()}
+                        size="small"
+                      >
+                        编辑表格
+                      </Button>
+                    </Space>
                   </div>
-                )}
+                </div>
+                
+                
+                
+               
               </>
             )}
           </Form>
         </Modal>
-    </>
-  );
+        {/* 表格编辑模态框 */}
+        <Modal
+          title={
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Avatar size={24} icon={<SettingOutlined />} style={{ backgroundColor: '#1890ff' }} />
+              <span style={{ fontSize: '16px', fontWeight: '600', color: '#262626' }}>表格数据编辑</span>
+            </div>
+          }
+          visible={isTableModalVisible}
+          onCancel={() => setIsTableModalVisible(false)}
+          footer={[
+            <Button key="cancel" onClick={() => setIsTableModalVisible(false)}>
+              取消
+            </Button>,
+            <Button key="addRow" onClick={addTableRow}>
+              添加行
+            </Button>,
+            <Button key="save" type="primary" onClick={saveTableData}>
+              保存数据
+            </Button>
+          ]}
+          width={900}
+          style={{ top: 20 }}
+        >
+          <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+            <table style={{ 
+              width: '100%', 
+              borderCollapse: 'collapse',
+              border: '1px solid #d9d9d9',
+              borderRadius: '6px',
+              overflow: 'hidden'
+            }}>
+              <thead>
+                <tr style={{ background: '#fafafa' }}>
+                  <th style={{ 
+                    padding: '12px',
+                    borderBottom: '1px solid #d9d9d9',
+                    borderRight: '1px solid #d9d9d9',
+                    fontWeight: '600',
+                    color: '#262626',
+                    textAlign: 'left'
+                  }}>操作</th>
+                  {tableColumns.map((col, index) => (
+                    <th 
+                      key={col.key} 
+                      style={{ 
+                        padding: '12px',
+                        borderBottom: '1px solid #d9d9d9',
+                        borderRight: index < tableColumns.length - 1 ? '1px solid #d9d9d9' : 'none',
+                        fontWeight: '600',
+                        color: '#262626',
+                        textAlign: 'left'
+                      }}
+                    >
+                      {col.title}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {tableData.map((row, rowIndex) => (
+                  <tr key={row.key} style={{ background: rowIndex % 2 === 0 ? '#fafafa' : 'white' }}>
+                    <td style={{ 
+                      padding: '8px',
+                      borderBottom: '1px solid #d9d9d9',
+                      borderRight: '1px solid #d9d9d9'
+                    }}>
+                      <Button
+                        icon={<DeleteOutlined />}
+                        onClick={() => deleteTableRow(row.key)}
+                        danger
+                        size="small"
+                      />
+                    </td>
+                    {tableColumns.map((col, colIndex) => (
+                      <td 
+                        key={`${row.key}-${col.key}`} 
+                        style={{ 
+                          padding: '8px',
+                          borderBottom: '1px solid #d9d9d9',
+                          borderRight: colIndex < tableColumns.length - 1 ? '1px solid #d9d9d9' : 'none'
+                        }}
+                      >
+                        <Input
+                          value={row[col.dataIndex] || ''}
+                          onChange={(e) => updateTableCell(row.key, col.dataIndex, e.target.value)}
+                          placeholder={`输入${col.title}`}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            
+            {tableData.length === 0 && (
+              <div style={{ 
+                textAlign: 'center', 
+                color: '#8c8c8c', 
+                padding: '40px',
+                border: '1px dashed #d9d9d9',
+                borderRadius: '6px',
+                background: '#fafafa',
+                marginTop: '16px'
+              }}>
+                <div style={{ fontSize: '16px', marginBottom: '8px' }}>暂无数据</div>
+                <div style={{ fontSize: '14px' }}>点击"添加行"按钮添加数据</div>
+              </div>
+            )}
+          </div>
+        </Modal>
+        
+        {/* JSON参数编辑模态框 */}
+        <Modal
+          title={
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Avatar size={24} icon={<SettingOutlined />} style={{ backgroundColor: '#1890ff' }} />
+              <span style={{ fontSize: '16px', fontWeight: '600', color: '#262626' }}>JSON参数编辑</span>
+            </div>
+          }
+          visible={isJsonModalVisible}
+          onCancel={() => setIsJsonModalVisible(false)}
+          footer={[
+            <Button key="cancel" onClick={() => setIsJsonModalVisible(false)}>
+              取消
+            </Button>,
+            <Button key="save" type="primary" onClick={saveJsonParams}>
+              保存参数
+            </Button>
+          ]}
+          width={800}
+          style={{ top: 20 }}
+        >
+          <div style={{ padding: '16px 0' }}>
+            <div style={{ marginBottom: '12px' }}>
+              <span style={{ fontWeight: '500', color: '#262626' }}>参数编辑器</span>
+            </div>
+            <div style={{ 
+              border: '1px solid #d9d9d9',
+              borderRadius: '6px',
+              padding: '12px',
+              background: '#fafafa'
+            }}>
+              <JsonEditor
+                data={jsonParams}
+                setData={(data) => {
+                  if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
+                    setJsonParams(data as Record<string, any>);
+                  }
+                }}
+                rootName="data"
+              />
+            </div>
+          </div>
+        </Modal>
+      </>
+    );
+  
 };
 
 export default TodoComponent;
