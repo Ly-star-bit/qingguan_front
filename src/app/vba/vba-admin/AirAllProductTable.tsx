@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Product } from './types';
-import { Table, Button, Form, Input, Modal, Pagination, message, Select, Upload, Space, Spin, Dropdown, Card, Row, Col, Tooltip, AutoComplete } from 'antd';
+import { Table, Button, Form, Input, Modal, Pagination, message, Select, Upload, Space, Spin, Dropdown, Card, Row, Col, Tooltip, AutoComplete, Timeline, Tag } from 'antd';
 import moment from 'moment';
-import { EditOutlined, DeleteOutlined, ExclamationCircleOutlined, UploadOutlined, EyeOutlined, MinusCircleOutlined, PlusOutlined, CopyOutlined, RetweetOutlined, MoreOutlined, SearchOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, ExclamationCircleOutlined, UploadOutlined, EyeOutlined, MinusCircleOutlined, PlusOutlined, CopyOutlined, RetweetOutlined, MoreOutlined, SearchOutlined, HistoryOutlined } from '@ant-design/icons';
 import styles from "@/styles/Home.module.css"
 import axiosInstance from '@/utils/axiosInstance';
 import * as XLSX from 'xlsx';
@@ -77,6 +77,10 @@ const AirAllProductTable: React.FC = () => {
     const [categories, setCategories] = useState<string[]>([]);
     const [factories, setFactories] = useState<any[]>([]);
     const [tariffData, setTariffData] = useState<any[]>([]);
+    const [isHistoryModalVisible, setIsHistoryModalVisible] = useState(false);
+    const [historyData, setHistoryData] = useState<any[]>([]);
+    const [loadingHistory, setLoadingHistory] = useState(false);
+    const [currentProductId, setCurrentProductId] = useState<string>('');
 
     const userName = useSelector((state: RootState) => state.user.name);
 
@@ -340,13 +344,19 @@ const AirAllProductTable: React.FC = () => {
                 key: 'action',
                 width: 50,
                 fixed: 'left' as const,
-                render: (text: any, record: Product) => {
+                render: (_: any, record: Product) => {
                     const items = [
                         {
                             key: 'edit',
                             icon: <EditOutlined />,
                             label: '编辑',
                             onClick: () => handleEdit(record)
+                        },
+                        {
+                            key: 'history',
+                            icon: <HistoryOutlined />,
+                            label: '查看历史',
+                            onClick: () => fetchHistory(record.id)
                         },
                         {
                             key: 'delete',
@@ -710,6 +720,77 @@ const AirAllProductTable: React.FC = () => {
         } finally {
             setIsUpdating(false);
         }
+    };
+
+    // 获取修改历史
+    const fetchHistory = async (productId: string) => {
+        setLoadingHistory(true);
+        setCurrentProductId(productId);
+        try {
+            const apiEndpoint = transport_type.includes("空运")
+                ? `${server_url}/qingguan/products/${productId}/history`
+                : `${server_url}/qingguan/products_sea/${productId}/history`;
+
+            const response = await axiosInstance.get(apiEndpoint);
+            setHistoryData(response.data.edit_log || []);
+            setIsHistoryModalVisible(true);
+        } catch (error) {
+            console.error('获取历史记录失败:', error);
+            message.error('获取历史记录失败');
+        } finally {
+            setLoadingHistory(false);
+        }
+    };
+
+    // 渲染修改详情
+    const renderChangeDetails = (details: any) => {
+        if (!details) return null;
+
+        if (details.说明 === "无字段变更") {
+            return <Tag color="blue">无字段变更</Tag>;
+        }
+
+        return (
+            <div style={{ marginTop: 8 }}>
+                {Object.entries(details).map(([key, value]: [string, any]) => {
+                    if (key === '说明') return null;
+
+                    const oldValue = value.原值;
+                    const newValue = value.新值;
+
+                    // 处理复杂对象
+                    const formatValue = (val: any) => {
+                        if (val === null || val === undefined || val === '') {
+                            return <Tag color="default">空</Tag>;
+                        }
+                        if (typeof val === 'object') {
+                            return (
+                                <pre style={{ margin: 0, fontSize: 12, maxWidth: 400, overflow: 'auto' }}>
+                                    {JSON.stringify(val, null, 2)}
+                                </pre>
+                            );
+                        }
+                        return <span>{String(val)}</span>;
+                    };
+
+                    return (
+                        <div key={key} style={{ marginBottom: 12, padding: 8, background: '#f5f5f5', borderRadius: 4 }}>
+                            <div style={{ fontWeight: 'bold', marginBottom: 4 }}>{key}</div>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                                <div style={{ flex: 1 }}>
+                                    <Tag color="red">原值</Tag>
+                                    {formatValue(oldValue)}
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                    <Tag color="green">新值</Tag>
+                                    {formatValue(newValue)}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        );
     };
 
     return (
@@ -1260,6 +1341,58 @@ const AirAllProductTable: React.FC = () => {
                     ))}
                 </ul>
                 <p>注意：Excel文件必须包含id列，用于匹配需要更新的记录。</p>
+            </Modal>
+
+            {/* 修改历史模态框 */}
+            <Modal
+                title="修改历史记录"
+                open={isHistoryModalVisible}
+                onCancel={() => {
+                    setIsHistoryModalVisible(false);
+                    setHistoryData([]);
+                }}
+                footer={[
+                    <Button key="close" onClick={() => {
+                        setIsHistoryModalVisible(false);
+                        setHistoryData([]);
+                    }}>
+                        关闭
+                    </Button>
+                ]}
+                width={800}
+            >
+                <Spin spinning={loadingHistory}>
+                    {historyData.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
+                            暂无修改历史记录
+                        </div>
+                    ) : (
+                        <Timeline
+                            mode="left"
+                            items={historyData.map((log, index) => ({
+                                color: log.操作 === '更新' ? 'blue' : log.操作 === '创建' ? 'green' : 'red',
+                                children: (
+                                    <Card
+                                        key={index}
+                                        size="small"
+                                        style={{ marginBottom: 16 }}
+                                        title={
+                                            <Space>
+                                                <Tag color={log.操作 === '更新' ? 'blue' : log.操作 === '创建' ? 'green' : 'red'}>
+                                                    {log.操作}
+                                                </Tag>
+                                                <span>{log.操作时间}</span>
+                                            </Space>
+                                        }
+                                        extra={<Tag color="purple">操作人: {log.操作人}</Tag>}
+                                    >
+                                        {renderChangeDetails(log.修改详情)}
+                                    </Card>
+                                )
+                            }))}
+                        />
+                    )}
+                </Spin>
             </Modal>
         </div>
     );
