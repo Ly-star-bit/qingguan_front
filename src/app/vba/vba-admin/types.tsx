@@ -71,6 +71,12 @@ export interface Product {
         value: string;
     }
     is_hidden: boolean;
+    edit_log?: Array<{
+        操作: string;
+        操作人: string;
+        操作时间: string;
+        修改详情: any;
+    }>;
 }
 
   

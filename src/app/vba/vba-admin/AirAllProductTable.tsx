@@ -727,12 +727,13 @@ const AirAllProductTable: React.FC = () => {
         setLoadingHistory(true);
         setCurrentProductId(productId);
         try {
-            const apiEndpoint = transport_type.includes("空运")
-                ? `${server_url}/qingguan/products/${productId}/history`
-                : `${server_url}/qingguan/products_sea/${productId}/history`;
-
-            const response = await axiosInstance.get(apiEndpoint);
-            setHistoryData(response.data.edit_log || []);
+            // 从当前产品列表中查找产品
+            const product = allProducts.find(p => p.id === productId);
+            if (product && product.edit_log) {
+                setHistoryData(product.edit_log);
+            } else {
+                setHistoryData([]);
+            }
             setIsHistoryModalVisible(true);
         } catch (error) {
             console.error('获取历史记录失败:', error);
